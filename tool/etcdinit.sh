@@ -29,7 +29,32 @@ docker exec etcd /etcdctl set /servicebroker/mongodb_aws/password 2016asia
 ##初始化catalog
 docker exec etcd /etcdctl mkdir /servicebroker/mongodb_aws/catalog
 
+###创建服务
+docker exec etcd /etcdctl mkdir /servicebroker/mongodb_aws/catalog/A25DE423-484E-4252-B6FE-EA4F347BCE3D #服务id
 
+###创建服务级的配置
+docker exec etcd /etcdctl set /servicebroker/mongodb_aws/catalog/A25DE423-484E-4252-B6FE-EA4F347BCE3D/Name "mongodb_aws"
+docker exec etcd /etcdctl set /servicebroker/mongodb_aws/catalog/A25DE423-484E-4252-B6FE-EA4F347BCE3D/Description "A MongoDB for AWS"
+docker exec etcd /etcdctl set /servicebroker/mongodb_aws/catalog/A25DE423-484E-4252-B6FE-EA4F347BCE3D/Bindable true
+docker exec etcd /etcdctl set /servicebroker/mongodb_aws/catalog/A25DE423-484E-4252-B6FE-EA4F347BCE3D/PlanUpdatable true
+docker exec etcd /etcdctl set /servicebroker/mongodb_aws/catalog/A25DE423-484E-4252-B6FE-EA4F347BCE3D/tags '["amqp","rabbitmq","messaging"]'
+docker exec etcd /etcdctl set /servicebroker/mongodb_aws/catalog/A25DE423-484E-4252-B6FE-EA4F347BCE3D/metadata '{"displayName":"CloudAMQP","imageUrl":"https://d33na3ni6eqf5j.cloudfront.net/app_resources/18492/thumbs_112/img9069612145282015279.png","longDescription":"Managed, highly available, RabbitMQ clusters in the cloud","providerDisplayName":"84codes AB","documentationUrl":"http://docs.cloudfoundry.com/docs/dotcom/marketplace/services/cloudamqp.html","supportUrl":"http://www.cloudamqp.com/support.html"}'
+
+###创建套餐目录
+docker exec etcd /etcdctl mkdir /servicebroker/mongodb_aws/catalog/A25DE423-484E-4252-B6FE-EA4F347BCE3D/plan
+###创建套餐1
+docker exec etcd /etcdctl mkdir /servicebroker/mongodb_aws/catalog/A25DE423-484E-4252-B6FE-EA4F347BCE3D/plan/E28FB3AE-C237-484F-AC9D-FB0A80223F85
+docker exec etcd /etcdctl set /servicebroker/mongodb_aws/catalog/A25DE423-484E-4252-B6FE-EA4F347BCE3D/plan/E28FB3AE-C237-484F-AC9D-FB0A80223F85/name "shared"
+docker exec etcd /etcdctl set /servicebroker/mongodb_aws/catalog/A25DE423-484E-4252-B6FE-EA4F347BCE3D/plan/E28FB3AE-C237-484F-AC9D-FB0A80223F85/description "share a mongodb instance on aws"
+docker exec etcd /etcdctl set /servicebroker/mongodb_aws/catalog/A25DE423-484E-4252-B6FE-EA4F347BCE3D/plan/E28FB3AE-C237-484F-AC9D-FB0A80223F85/metadata '{"bullets":["20 GB of Disk","20 connections"],"displayName":"Shared and Free" }'
+docker exec etcd /etcdctl set /servicebroker/mongodb_aws/catalog/A25DE423-484E-4252-B6FE-EA4F347BCE3D/plan/E28FB3AE-C237-484F-AC9D-FB0A80223F85/free true
+
+###创建套餐2
+docker exec etcd /etcdctl mkdir /servicebroker/mongodb_aws/catalog/A25DE423-484E-4252-B6FE-EA4F347BCE3D/plan/8C7E1AB9-DB63-4E14-9487-733BB587E1B2
+docker exec etcd /etcdctl set /servicebroker/mongodb_aws/catalog/A25DE423-484E-4252-B6FE-EA4F347BCE3D/plan/8C7E1AB9-DB63-4E14-9487-733BB587E1B2/name "standalone"
+docker exec etcd /etcdctl set /servicebroker/mongodb_aws/catalog/A25DE423-484E-4252-B6FE-EA4F347BCE3D/plan/8C7E1AB9-DB63-4E14-9487-733BB587E1B2/description "each user has a standalone mongodb instance on aws"
+docker exec etcd /etcdctl set /servicebroker/mongodb_aws/catalog/A25DE423-484E-4252-B6FE-EA4F347BCE3D/plan/8C7E1AB9-DB63-4E14-9487-733BB587E1B2/metadata '{"bullets":["20 GB of Disk","20 connections"],"costs":[{"amount":{"usd":99.0,"eur":49.0},"unit":"MONTHLY"},{"amount":{"usd":0.99, "eur":0.49}, "unit":"1GB of messages over 20GB"} ], "displayName":"Big Bunny" }'
+docker exec etcd /etcdctl set /servicebroker/mongodb_aws/catalog/A25DE423-484E-4252-B6FE-EA4F347BCE3D/plan/8C7E1AB9-DB63-4E14-9487-733BB587E1B2/free false
 ##初始化instance
 docker exec etcd /etcdctl mkdir /servicebroker/mongodb_aws/instance
 

@@ -9,6 +9,7 @@ import (
     "time"
     "github.com/coreos/etcd/Godeps/_workspace/src/golang.org/x/net/context"
     "github.com/coreos/etcd/client"
+    "encoding/json"
 )
 
 type myServiceBroker struct {
@@ -47,23 +48,48 @@ type myServiceBroker struct {
 
 func (myBroker *myServiceBroker) Services() []brokerapi.Service {
     // Return a []brokerapi.Service here, describing your service(s) and plan(s)
-    myBroker.BrokerCalled = true
-    //ceshi
-    resp,_:=etcdget("/foo") //需要修改为环境变量参数
-    tempvalue:=resp.Node.Value 
-    fmt.Println("``````````````````"+tempvalue)
-
-    //for test
-    resp, _ = etcdapi.Get(context.Background(), "/servicebroker", nil)
-    if resp.Node.Dir== true {
-        fmt.Println(len(resp.Node.Nodes))
-        fmt.Println(resp.Node.Nodes[0].Key)
+    //myBroker.BrokerCalled = true
+    myServices:=[]brokerapi.Service{}
+    myService:=brokerapi.Service{}
+    //获取catalog信息
+    resp, err := etcdapi.Get(context.Background(), "/servicebroker/"+"mongodb_aws"+"/catalog", &client.GetOptions{Recursive:true})
+    if err!=nil {
+        logger.Error("Can not get catalog information from etcd", err)
+    } else {
+        logger.Debug("Successful get catalog information from etcd. NodeInfo is "+resp.Node.Key)
     }
 
-    
-   
-    return []brokerapi.Service{
-        brokerapi.Service{
+    fmt.Println("------------------")
+    for i := 0; i < len(resp.Node.Nodes); i++ {
+        //为旗下发现的每一个service进行迭代，不过一般情况下，应该只有一个service
+        fmt.Println("=============")
+        fmt.Println(resp.Node.Nodes[i].Key)
+        fmt.Println("=============")
+        for j :=0 ;j<len(resp.Node.Nodes[i].Nodes); j++ {
+            if ! resp.Node.Nodes[i].Nodes[j].Dir {
+                fmt.Println(resp.Node.Nodes[i].Nodes[j].Key)
+
+                switch resp.Node.Nodes[i].Nodes[j].Key {
+                    case resp.Node.Nodes[i].Key+"Name":
+                        myService.Name=resp.Node.Nodes[i].Nodes[j].Value 
+                    case resp.Node.Nodes[i].Key+"Description":
+                        myService.Description=resp.Node.Nodes[i].Nodes[j].Value 
+                    case resp.Node.Nodes[i].Key+"Bindable":
+                        myService.Bindable=resp.Node.Nodes[i].Nodes[j].Value 
+                    case resp.Node.Nodes[i].Key+"Tags":
+                        myService.Tags=[]string{resp.Node.Nodes[i].Nodes[j].Value}
+                    case resp.Node.Nodes[i].Key+"PlanUpdatable":
+                        myService.PlanUpdatable=resp.Node.Nodes[i].Nodes[j].Value 
+                    case resp.Node.Nodes[i].Key+"Metadata":
+                       myService.Metadata=resp.Node.Nodes[i].Nodes[j].Value 
+                }  
+            }
+        }
+        //fmt.Println(resp.Node.Nodes[i].Nodes)
+
+        //固定返回测试
+        /*
+        myService=brokerapi.Service{
             ID:            "0A789746-596F-4CEA-BFAC-A0795DA056E3",
             Name:          "p-cassandra",
             Description:   "Cassandra service for application development and testing",
@@ -90,8 +116,19 @@ func (myBroker *myServiceBroker) Services() []brokerapi.Service {
                 "pivotal",
                 "cassandra",
             },
-        },
+        }
+        */
+        
+        //装配catalog需要返回的值，按照有多少个服务往里面装
+        myServices=append(myServices,myService)
+        //重置服务变量
+        myService=brokerapi.Service{}
+
+
     }
+    
+    return myServices
+
 }
 
 
