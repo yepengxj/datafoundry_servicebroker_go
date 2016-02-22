@@ -54,7 +54,7 @@ func (myBroker *myServiceBroker) Services() []brokerapi.Service {
     fmt.Println("``````````````````"+tempvalue)
 
     //for test
-    resp, err = etcdapi.Get(context.Background(), "/servicebroker", nil)
+    resp, _ = etcdapi.Get(context.Background(), "/servicebroker", nil)
     if resp.Node.Dir== true {
         fmt.Println(len(resp.Node.Nodes))
         fmt.Println(resp.Node.Nodes[0].Key)
@@ -234,15 +234,15 @@ func etcdget(key string) (*client.Response,error) {
     resp, err := etcdapi.Get(context.Background(), key, nil) 
     if err != nil {
         logger.Error("Can not get "+key+" from etcd", err)
-        return nil,err 
     } else {
         logger.Debug("Successful get "+key+" from etcd. value is "+resp.Node.Value)
-        return resp,err
     }
+    return resp,err
 }
 
 func main() {
     //初始化参数，参数应该从环境变量中获取 
+    var username,password string
     //todo参数应该改为从环境变量中获取
 
     //初始化日志对象，日志输出到stdout
@@ -267,9 +267,20 @@ func main() {
 
     //取得用户名和密码
     resp,err:=etcdget("/servicebroker/"+"mongodb_aws"+"/username") //需要修改为环境变量参数
-    username:=resp.Node.Value
+    if err !=nil {
+        logger.Error("Can not init username,Progrom Exit!", err)
+        os.Exit(1)
+    } else {
+        username=resp.Node.Value
+    }
+    
     resp,err=etcdget("/servicebroker/"+"mongodb_aws"+"/password") //需要修改为环境变量参数
-    password:=resp.Node.Value
+    if err !=nil {
+        logger.Error("Can not init password,Progrom Exit!", err)
+        os.Exit(1)
+    } else {
+        password=resp.Node.Value
+    }
 
     //装配用户名和密码
     credentials := brokerapi.BrokerCredentials{
