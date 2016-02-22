@@ -10,6 +10,8 @@ import (
     "github.com/coreos/etcd/Godeps/_workspace/src/golang.org/x/net/context"
     "github.com/coreos/etcd/client"
     "encoding/json"
+    "strconv"
+    "strings"
 )
 
 type myServiceBroker struct {
@@ -49,8 +51,12 @@ type myServiceBroker struct {
 func (myBroker *myServiceBroker) Services() []brokerapi.Service {
     // Return a []brokerapi.Service here, describing your service(s) and plan(s)
     //myBroker.BrokerCalled = true
+    //初始化一系列所需要的结构体，好累啊
     myServices:=[]brokerapi.Service{}
     myService:=brokerapi.Service{}
+    myPlans:=[]brokerapi.ServicePlan{}
+    myPlan:=brokerapi.ServicePlan{}
+    var myPlanfree bool
     //获取catalog信息
     resp, err := etcdapi.Get(context.Background(), "/servicebroker/"+"mongodb_aws"+"/catalog", &client.GetOptions{Recursive:true})
     if err!=nil {
@@ -59,66 +65,58 @@ func (myBroker *myServiceBroker) Services() []brokerapi.Service {
         logger.Debug("Successful get catalog information from etcd. NodeInfo is "+resp.Node.Key)
     }
 
-    fmt.Println("------------------")
     for i := 0; i < len(resp.Node.Nodes); i++ {
         //为旗下发现的每一个service进行迭代，不过一般情况下，应该只有一个service
-        fmt.Println("=============")
-        fmt.Println(resp.Node.Nodes[i].Key)
-        fmt.Println("=============")
+        logger.Debug("Start to Parse Service "+resp.Node.Nodes[i].Key)
+        //在下一级循环外设置id，因为他是目录名字，注意，如果按照这个逻辑，id一定要是uuid，中间一定不能有目录符号"/"
+        myService.ID=strings.Split(resp.Node.Nodes[i].Key,"/")[len(strings.Split(resp.Node.Nodes[i].Key,"/"))-1]
+        //开始取service级别除了ID以外的其他参数
         for j :=0 ;j<len(resp.Node.Nodes[i].Nodes); j++ {
             if ! resp.Node.Nodes[i].Nodes[j].Dir {
-                fmt.Println(resp.Node.Nodes[i].Nodes[j].Key)
-
-                switch resp.Node.Nodes[i].Nodes[j].Key {
-                    case resp.Node.Nodes[i].Key+"Name":
+                switch strings.ToLower(resp.Node.Nodes[i].Nodes[j].Key) {
+                    case strings.ToLower(resp.Node.Nodes[i].Key)+"/name":
                         myService.Name=resp.Node.Nodes[i].Nodes[j].Value 
-                    case resp.Node.Nodes[i].Key+"Description":
+                    case strings.ToLower(resp.Node.Nodes[i].Key)+"/description":
                         myService.Description=resp.Node.Nodes[i].Nodes[j].Value 
-                    case resp.Node.Nodes[i].Key+"Bindable":
-                        myService.Bindable=resp.Node.Nodes[i].Nodes[j].Value 
-                    case resp.Node.Nodes[i].Key+"Tags":
-                        myService.Tags=[]string{resp.Node.Nodes[i].Nodes[j].Value}
-                    case resp.Node.Nodes[i].Key+"PlanUpdatable":
-                        myService.PlanUpdatable=resp.Node.Nodes[i].Nodes[j].Value 
-                    case resp.Node.Nodes[i].Key+"Metadata":
-                       myService.Metadata=resp.Node.Nodes[i].Nodes[j].Value 
+                    case strings.ToLower(resp.Node.Nodes[i].Key)+"/bindable":
+                        myService.Bindable,_=strconv.ParseBool(resp.Node.Nodes[i].Nodes[j].Value)
+                    case strings.ToLower(resp.Node.Nodes[i].Key)+"/tags":
+                        myService.Tags=strings.Split(resp.Node.Nodes[i].Nodes[j].Value,",")
+                    case strings.ToLower(resp.Node.Nodes[i].Key)+"/planupdatable":
+                        myService.PlanUpdatable,_=strconv.ParseBool(resp.Node.Nodes[i].Nodes[j].Value)
+                    case strings.ToLower(resp.Node.Nodes[i].Key)+"/metadata":
+                        json.Unmarshal([]byte(resp.Node.Nodes[i].Nodes[j].Value),&myService.Metadata)     
                 }  
+            } else if strings.HasSuffix(strings.ToLower(resp.Node.Nodes[i].Nodes[j].Key),"plan") {
+                //开始解析套餐目录中的套餐计划plan。上述判断也不是太严谨，比如有目录如果是xxxxplan怎么办？
+                for k:=0 ;k <len(resp.Node.Nodes[i].Nodes[j].Nodes); k++ {
+                    logger.Debug("Start to Parse Plan "+resp.Node.Nodes[i].Nodes[j].Nodes[k].Key)
+                    myPlan.ID=strings.Split(resp.Node.Nodes[i].Nodes[j].Nodes[k].Key,"/")[len(strings.Split(resp.Node.Nodes[i].Nodes[j].Nodes[k].Key,"/"))-1]
+                    for n:=0 ; n < len(resp.Node.Nodes[i].Nodes[j].Nodes[k].Nodes);n++ {
+                        switch strings.ToLower(resp.Node.Nodes[i].Nodes[j].Nodes[k].Nodes[n].Key) {
+                            case strings.ToLower(resp.Node.Nodes[i].Nodes[j].Nodes[k].Key)+"/name":
+                                myPlan.Name=resp.Node.Nodes[i].Nodes[j].Nodes[k].Nodes[n].Value
+                            case strings.ToLower(resp.Node.Nodes[i].Nodes[j].Nodes[k].Key)+"/description":
+                                myPlan.Description=resp.Node.Nodes[i].Nodes[j].Nodes[k].Nodes[n].Value
+                            case strings.ToLower(resp.Node.Nodes[i].Nodes[j].Nodes[k].Key)+"/free":
+                                //这里没有搞懂为什么brokerapi里面的这个bool要定义为传指针的模式，也没有搞懂为啥FreeValue这个函数就可以工作
+                                myPlanfree,_=strconv.ParseBool(resp.Node.Nodes[i].Nodes[j].Nodes[k].Nodes[n].Value)
+                                myPlan.Free=brokerapi.FreeValue(myPlanfree)
+                            case strings.ToLower(resp.Node.Nodes[i].Nodes[j].Nodes[k].Key)+"/metadata":
+                                json.Unmarshal([]byte(resp.Node.Nodes[i].Nodes[j].Nodes[k].Nodes[n].Value),&myPlan.Metadata) 
+                        }
+                    }
+                    //装配plan需要返回的值，按照有多少个plan往里面装
+                    myPlans=append(myPlans,myPlan)
+                    //重置服务变量
+                    myPlan=brokerapi.ServicePlan{}
+
+                }
+                //将装配好的Plan对象赋值给Service               
+                myService.Plans=myPlans
             }
         }
-        //fmt.Println(resp.Node.Nodes[i].Nodes)
-
-        //固定返回测试
-        /*
-        myService=brokerapi.Service{
-            ID:            "0A789746-596F-4CEA-BFAC-A0795DA056E3",
-            Name:          "p-cassandra",
-            Description:   "Cassandra service for application development and testing",
-            Bindable:      true,
-            PlanUpdatable: true,
-            Plans: []brokerapi.ServicePlan{
-                brokerapi.ServicePlan{
-                    ID:          "ABE176EE-F69F-4A96-80CE-142595CC24E3",
-                    Name:        "default",
-                    Description: "The default Cassandra plan",
-                    Metadata: &brokerapi.ServicePlanMetadata{
-                        Bullets:     []string{},
-                        DisplayName: "Cassandra",
-                    },
-                },
-            },
-            Metadata: &brokerapi.ServiceMetadata{
-                DisplayName:      "Cassandra",
-                LongDescription:  "Long description",
-                DocumentationUrl: "http://thedocs.com",
-                SupportUrl:       "http://helpme.no",
-            },
-            Tags: []string{
-                "pivotal",
-                "cassandra",
-            },
-        }
-        */
-        
+       
         //装配catalog需要返回的值，按照有多少个服务往里面装
         myServices=append(myServices,myService)
         //重置服务变量
