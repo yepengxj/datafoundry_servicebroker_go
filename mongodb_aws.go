@@ -1,7 +1,6 @@
 package main
 
 import (
-<<<<<<< HEAD
     "github.com/pivotal-cf/brokerapi"
     "github.com/pivotal-golang/lager"
     "net/http"
@@ -13,20 +12,6 @@ import (
     "encoding/json"
     "strconv"
     "strings"
-=======
-	"encoding/json"
-	"fmt"
-	"github.com/coreos/etcd/Godeps/_workspace/src/golang.org/x/net/context"
-	"github.com/coreos/etcd/client"
-	"github.com/mitchellh/mapstructure"
-	"github.com/pivotal-cf/brokerapi"
-	"github.com/pivotal-golang/lager"
-	"net/http"
-	"os"
-	"strconv"
-	"strings"
-	"time"
->>>>>>> origin/master
 )
 
 type myServiceBroker struct {
@@ -64,7 +49,6 @@ type myServiceBroker struct {
 }
 
 func (myBroker *myServiceBroker) Services() []brokerapi.Service {
-<<<<<<< HEAD
     // Return a []brokerapi.Service here, describing your service(s) and plan(s)
     //myBroker.BrokerCalled = true
     //初始化一系列所需要的结构体，好累啊
@@ -142,63 +126,6 @@ func (myBroker *myServiceBroker) Services() []brokerapi.Service {
     }
     
     return myServices
-=======
-	// Return a []brokerapi.Service here, describing your service(s) and plan(s)
-	//myBroker.BrokerCalled = true
-	myServices := []brokerapi.Service{}
-	myService := brokerapi.Service{}
-	//获取catalog信息
-	resp, err := etcdapi.Get(context.Background(), "/servicebroker/"+"mongodb_aws"+"/catalog", &client.GetOptions{Recursive: true})
-	if err != nil {
-		logger.Error("Can not get catalog information from etcd", err)
-	} else {
-		logger.Debug("Successful get catalog information from etcd. NodeInfo is " + resp.Node.Key)
-	}
-
-	//fmt.Printf("%#v", resp.Node)
-	for _, nodeSvc := range resp.Node.Nodes {
-		svc := make(map[string]interface{})
-		for _, v := range nodeSvc.Nodes {
-			key := strings.TrimPrefix(v.Key, nodeSvc.Key+"/")
-			svc[key] = v.Value
-			fmt.Println(key, v.Value)
-			switch key {
-			case "Bindable", "PlanUpdatable":
-				svc[key], _ = strconv.ParseBool(v.Value)
-			case "tags":
-				tags := []string{}
-				json.Unmarshal([]byte(v.Value), &tags)
-				svc[key] = tags
-			case "metadata":
-				metadata := brokerapi.ServiceMetadata{}
-				json.Unmarshal([]byte(v.Value), &metadata)
-				svc[key] = metadata
-			default:
-				svc[key] = v.Value
-			}
-		}
-
-		fmt.Println(svc)
-		if err := mapstructure.Decode(svc, &myService); err != nil {
-			fmt.Println("Decode error!", err)
-		} else {
-			myServices = append(myServices, myService)
-		}
-		/*
-			if j, err := json.Marshal(svc); err == nil {
-				//fmt.Println(string(j))
-				if err = json.Unmarshal(j, &myService); err != nil {
-					fmt.Println(err)
-				} else {
-					fmt.Println("+++++++", myService)
-					myServices = append(myServices, myService)
-				}
-			}
-		*/
-	}
-
-	return myServices
->>>>>>> origin/master
 
 }
 
