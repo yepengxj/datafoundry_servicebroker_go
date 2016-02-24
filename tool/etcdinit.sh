@@ -20,6 +20,7 @@ docker exec etcd /etcdctl ls /
 curl $HostIP:2379
 
 #建立初始化数据
+##!!注意，初始化的时候，所有键值必须小写，这样程序才认识
 ##初始化用户名和密码部分
 docker exec etcd /etcdctl mkdir /servicebroker
 docker exec etcd /etcdctl mkdir /servicebroker/mongodb_aws
@@ -33,10 +34,10 @@ docker exec etcd /etcdctl mkdir /servicebroker/mongodb_aws/catalog
 docker exec etcd /etcdctl mkdir /servicebroker/mongodb_aws/catalog/A25DE423-484E-4252-B6FE-EA4F347BCE3D #服务id
 
 ###创建服务级的配置
-docker exec etcd /etcdctl set /servicebroker/mongodb_aws/catalog/A25DE423-484E-4252-B6FE-EA4F347BCE3D/Name "mongodb_aws"
-docker exec etcd /etcdctl set /servicebroker/mongodb_aws/catalog/A25DE423-484E-4252-B6FE-EA4F347BCE3D/Description "A MongoDB for AWS"
-docker exec etcd /etcdctl set /servicebroker/mongodb_aws/catalog/A25DE423-484E-4252-B6FE-EA4F347BCE3D/Bindable true
-docker exec etcd /etcdctl set /servicebroker/mongodb_aws/catalog/A25DE423-484E-4252-B6FE-EA4F347BCE3D/PlanUpdatable true
+docker exec etcd /etcdctl set /servicebroker/mongodb_aws/catalog/A25DE423-484E-4252-B6FE-EA4F347BCE3D/name "mongodb_aws"
+docker exec etcd /etcdctl set /servicebroker/mongodb_aws/catalog/A25DE423-484E-4252-B6FE-EA4F347BCE3D/description "A MongoDB for AWS"
+docker exec etcd /etcdctl set /servicebroker/mongodb_aws/catalog/A25DE423-484E-4252-B6FE-EA4F347BCE3D/bindable true
+docker exec etcd /etcdctl set /servicebroker/mongodb_aws/catalog/A25DE423-484E-4252-B6FE-EA4F347BCE3D/planupdatable true
 docker exec etcd /etcdctl set /servicebroker/mongodb_aws/catalog/A25DE423-484E-4252-B6FE-EA4F347BCE3D/tags 'amqp,rabbitmq,messaging'
 docker exec etcd /etcdctl set /servicebroker/mongodb_aws/catalog/A25DE423-484E-4252-B6FE-EA4F347BCE3D/metadata '{"displayName":"CloudAMQP","imageUrl":"https://d33na3ni6eqf5j.cloudfront.net/app_resources/18492/thumbs_112/img9069612145282015279.png","longDescription":"Managed, highly available, RabbitMQ clusters in the cloud","providerDisplayName":"84codes AB","documentationUrl":"http://docs.cloudfoundry.com/docs/dotcom/marketplace/services/cloudamqp.html","supportUrl":"http://www.cloudamqp.com/support.html"}'
 
@@ -57,4 +58,12 @@ docker exec etcd /etcdctl set /servicebroker/mongodb_aws/catalog/A25DE423-484E-4
 docker exec etcd /etcdctl set /servicebroker/mongodb_aws/catalog/A25DE423-484E-4252-B6FE-EA4F347BCE3D/plan/8C7E1AB9-DB63-4E14-9487-733BB587E1B2/free false
 ##初始化instance
 docker exec etcd /etcdctl mkdir /servicebroker/mongodb_aws/instance
+
+###创建一个用于测试的服务实例
+docker exec etcd /etcdctl mkdir /servicebroker/mongodb_aws/instance/98A763D7-CE08-4E0D-B139-769F80B6DEFD
+
+###创建一个用于测试的绑定实例
+docker exec etcd /etcdctl mkdir /servicebroker/mongodb_aws/instance/98A763D7-CE08-4E0D-B139-769F80B6DEFD/binding
+docker exec etcd /etcdctl mkdir /servicebroker/mongodb_aws/instance/98A763D7-CE08-4E0D-B139-769F80B6DEFD/binding/6853A95B-428B-4C10-99FC-1BE6CBFBE176
+
 

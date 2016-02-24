@@ -12,55 +12,25 @@ import (
     "encoding/json"
     "strconv"
     "strings"
+    "errors"
 )
 
 type myServiceBroker struct {
-	ProvisionDetails   brokerapi.ProvisionDetails
-	UpdateDetails      brokerapi.UpdateDetails
-	DeprovisionDetails brokerapi.DeprovisionDetails
 
-	ProvisionedInstanceIDs   []string
-	DeprovisionedInstanceIDs []string
-	UpdatedInstanceIDs       []string
-
-	BoundInstanceIDs    []string
-	BoundBindingIDs     []string
-	BoundBindingDetails brokerapi.BindDetails
-	SyslogDrainURL      string
-
-	UnbindingDetails brokerapi.UnbindDetails
-
-	InstanceLimit int
-
-	ProvisionError     error
-	BindError          error
-	DeprovisionError   error
-	LastOperationError error
-	UpdateError        error
-
-	BrokerCalled             bool
-	LastOperationState       brokerapi.LastOperationState
-	LastOperationDescription string
-
-	AsyncAllowed bool
-
-	ShouldReturnAsync brokerapi.IsAsync
-	DashboardURL      string
 }
 
 func (myBroker *myServiceBroker) Services() []brokerapi.Service {
-    // Return a []brokerapi.Service here, describing your service(s) and plan(s)
-    //myBroker.BrokerCalled = true
     //初始化一系列所需要的结构体，好累啊
     myServices:=[]brokerapi.Service{}
     myService:=brokerapi.Service{}
     myPlans:=[]brokerapi.ServicePlan{}
     myPlan:=brokerapi.ServicePlan{}
     var myPlanfree bool
+    //todo还需要考虑对于service和plan的隐藏参数，status，比如可以用，不可用，已经删除等。删除应该是软删除，后两者不予以显示，前者表示还有数据
     //获取catalog信息
-    resp, err := etcdapi.Get(context.Background(), "/servicebroker/"+"mongodb_aws"+"/catalog", &client.GetOptions{Recursive:true})
+    resp, err := etcdapi.Get(context.Background(), "/servicebroker/"+"mongodb_aws"+"/catalog", &client.GetOptions{Recursive:true}) //改为环境变量
     if err!=nil {
-        logger.Error("Can not get catalog information from etcd", err)
+        logger.Error("Can not get catalog information from etcd", err) //所有这些出错消息最好命名为常量，放到开始的时候
     } else {
         logger.Debug("Successful get catalog information from etcd. NodeInfo is "+resp.Node.Key)
     }
@@ -99,7 +69,7 @@ func (myBroker *myServiceBroker) Services() []brokerapi.Service {
                             case strings.ToLower(resp.Node.Nodes[i].Nodes[j].Nodes[k].Key)+"/description":
                                 myPlan.Description=resp.Node.Nodes[i].Nodes[j].Nodes[k].Nodes[n].Value
                             case strings.ToLower(resp.Node.Nodes[i].Nodes[j].Nodes[k].Key)+"/free":
-                                //这里没有搞懂为什么brokerapi里面的这个bool要定义为传指针的模式，也没有搞懂为啥FreeValue这个函数就可以工作
+                                //这里没有搞懂为什么brokerapi里面的这个bool要定义为传指针的模式
                                 myPlanfree,_=strconv.ParseBool(resp.Node.Nodes[i].Nodes[j].Nodes[k].Nodes[n].Value)
                                 myPlan.Free=brokerapi.FreeValue(myPlanfree)
                             case strings.ToLower(resp.Node.Nodes[i].Nodes[j].Nodes[k].Key)+"/metadata":
@@ -136,127 +106,209 @@ func (myBroker *myServiceBroker) Provision(
 ) (brokerapi.ProvisionedServiceSpec, error) {
 	// Provision a new instance here. If async is allowed, the broker can still
 	// chose to provision the instance synchronously.
-	myBroker.BrokerCalled = true
 
-	if myBroker.ProvisionError != nil {
-		return brokerapi.ProvisionedServiceSpec{}, myBroker.ProvisionError
+	//判断实例是否已经存在，如果存在就报错
+	resp, err := etcdget("/servicebroker/"+"mongodb_aws"+"/instance") //改为环境变量
+    for i :=0 ;i<len(resp.Node.Nodes); i++ {
+        if resp.Node.Nodes[i].Dir && strings.HasSuffix(resp.Node.Nodes[i].Key,instanceID) {
+        	return brokerapi.ProvisionedServiceSpec{}, brokerapi.ErrInstanceAlreadyExists
+        }
+    }
+
+	//do something important!!
+	//判断servcie_id和plan_id是否正确
+	service_name:=findServiceName(details.ServiceID)
+	plan_name:=findServicePlanName(details.ServiceID,details.PlanID)
+	if service_name=="" || plan_name=="" {
+		return brokerapi.ProvisionedServiceSpec{}, errors.New("Service_id or plan_id not correct!!")
+	}
+	//是否要检查service和plan的status是否允许创建 todo
+
+	//根据不同的服务和plan，选择创建的命令 ［每次增加不同的服务或者计划，只需要修改这里就好了。］
+	switch service_name {
+		case "mongodb_aws" : //需要配置为Service的环境变量
+			//开始根据不同的plan进行处理
+			switch plan_name {
+				case "shared" :
+					fmt.Println("------------provistion shared instance------------")
+					
+				default : //没有相关处理handle应该报错才对
+					return brokerapi.ProvisionedServiceSpec{}, errors.New("No Plan Handle for "+plan_name)
+
+			}
+		default : //没有相关的处理handle应该报错才对
+			return brokerapi.ProvisionedServiceSpec{}, errors.New("No Service Handle for "+service_name)
 	}
 
-	/*
-	   //暂不实现对实例数量的控制
-	   if len(myBroker.ProvisionedInstanceIDs) >= myBroker.InstanceLimit {
-	       return brokerapi.ProvisionedServiceSpec{}, brokerapi.ErrInstanceLimitMet
-	   }
-	*/
+	//假设服务已经生成好了，用来做测试 
+	DashboardURL:="etcd://testuser:password@127.0.0.1:2379"
 
-	if sliceContains(instanceID, myBroker.ProvisionedInstanceIDs) {
-		return brokerapi.ProvisionedServiceSpec{}, brokerapi.ErrInstanceAlreadyExists
+	//写入etcd 话说如果这个时候写入失败，那不就出现数据不一致的情况了么！todo
+	//先创建instanceid目录
+	_, err = etcdapi.Set(context.Background(), "/servicebroker/"+"mongodb_aws"+"/instance/"+instanceID,"", &client.SetOptions{Dir:true}) //todo这些要么是常量，要么应该用环境变量
+	if err != nil {
+		logger.Error("Can not create instance "+instanceID+" in etcd", err) //todo都应该改为日志key
+		return brokerapi.ProvisionedServiceSpec{}, err
+	} else {
+		logger.Debug("Successful create instance "+instanceID+" in etcd",nil)
 	}
+	//然后创建一系列属性
+	etcdset("/servicebroker/"+"mongodb_aws"+"/instance/"+instanceID+"/organization_guid",details.OrganizationGUID)
+	etcdset("/servicebroker/"+"mongodb_aws"+"/instance/"+instanceID+"/space_guid",details.SpaceGUID)
+	etcdset("/servicebroker/"+"mongodb_aws"+"/instance/"+instanceID+"/service_id",details.ServiceID)
+	etcdset("/servicebroker/"+"mongodb_aws"+"/instance/"+instanceID+"/plan_id",details.PlanID)
+	tmpval,_:=json.Marshal(details.Parameters)
+	etcdset("/servicebroker/"+"mongodb_aws"+"/instance/"+instanceID+"/parameters",string(tmpval))
+	etcdset("/servicebroker/"+"mongodb_aws"+"/instance/"+instanceID+"/dashboardurl",DashboardURL)
+	//创建绑定目录
+	_, err = etcdapi.Set(context.Background(), "/servicebroker/"+"mongodb_aws"+"/instance/"+instanceID+"/binding","", &client.SetOptions{Dir:true})
+	//应该具体服务创建的时候还有一些信息要存储，这样在服务绑定的时候，就可以读取这些信息来反馈! todo
 
-	myBroker.ProvisionDetails = details
-	myBroker.ProvisionedInstanceIDs = append(myBroker.ProvisionedInstanceIDs, instanceID)
-	return brokerapi.ProvisionedServiceSpec{DashboardURL: myBroker.DashboardURL}, nil
+	//完成所有操作后，返回DashboardURL
+	return brokerapi.ProvisionedServiceSpec{DashboardURL: DashboardURL}, nil
 }
 
 func (myBroker *myServiceBroker) LastOperation(instanceID string) (brokerapi.LastOperation, error) {
 	// If the broker provisions asynchronously, the Cloud Controller will poll this endpoint
 	// for the status of the provisioning operation.
-	// This also applies to deprovisioning (work in progress).
-	if myBroker.LastOperationError != nil {
-		return brokerapi.LastOperation{}, myBroker.LastOperationError
-	}
 
-	return brokerapi.LastOperation{State: myBroker.LastOperationState, Description: myBroker.LastOperationDescription}, nil
+	//去读取进展状态，如果有错误，返回错误，如果没有错误，返回对象LastOperation! todo 如果同步模式，不用实现这个接口
+	return brokerapi.LastOperation{}, nil
 }
 
 func (myBroker *myServiceBroker) Deprovision(instanceID string, details brokerapi.DeprovisionDetails, asyncAllowed bool) (brokerapi.IsAsync, error) {
 	// Deprovision a new instance here. If async is allowed, the broker can still
 	// chose to deprovision the instance synchronously, hence the first return value.
-	myBroker.BrokerCalled = true
 
-	if myBroker.DeprovisionError != nil {
-		return brokerapi.IsAsync(false), myBroker.DeprovisionError
+	//判断实例是否已经存在，如果不存在就报错
+	resp, err := etcdget("/servicebroker/"+"mongodb_aws"+"/instance/"+instanceID) //改为环境变量
+    if err!=nil || !resp.Node.Dir {
+        logger.Error("Can not get instance information from etcd", err) //所有这些出错消息最好命名为常量，放到开始的时候
+        return brokerapi.IsAsync(false), brokerapi.ErrInstanceDoesNotExist
+    } else {
+        logger.Debug("Successful get instance information from etcd. NodeInfo is "+resp.Node.Key)
+    }
+
+    //是否要判断里面有没有绑定啊？todo
+
+	//应该做一些事情，去删除这个实例 todo
+	//并且要核对一下detail里面的service_id和plan_id，做一个double check!!todo
+
+	//然后删除etcd里面的纪录，这里也有可能有不一致的情况
+	_, err = etcdapi.Delete(context.Background(), "/servicebroker/"+"mongodb_aws"+"/instance/"+instanceID, &client.DeleteOptions{Recursive:true,Dir:true}) //todo这些要么是常量，要么应该用环境变量
+	if err != nil {
+		logger.Error("Can not delete instance "+instanceID+" in etcd", err) //todo都应该改为日志key
+		return brokerapi.IsAsync(false), errors.New("Internal Error!!")
+	} else {
+		logger.Debug("Successful delete instance "+instanceID+" in etcd",nil)
 	}
 
-	myBroker.DeprovisionDetails = details
-	myBroker.DeprovisionedInstanceIDs = append(myBroker.DeprovisionedInstanceIDs, instanceID)
-
-	if sliceContains(instanceID, myBroker.ProvisionedInstanceIDs) {
-		return brokerapi.IsAsync(false), nil
-	}
-	return brokerapi.IsAsync(false), brokerapi.ErrInstanceDoesNotExist
+	return brokerapi.IsAsync(false), nil
 }
 
 func (myBroker *myServiceBroker) Bind(instanceID, bindingID string, details brokerapi.BindDetails) (brokerapi.Binding, error) {
 	// Bind to instances here
 	// Return a binding which contains a credentials object that can be marshalled to JSON,
 	// and (optionally) a syslog drain URL.
-	myBroker.BrokerCalled = true
 
-	if myBroker.BindError != nil {
-		return brokerapi.Binding{}, myBroker.BindError
+	//判断实例是否已经存在，如果不存在就报错
+	resp, err := etcdget("/servicebroker/"+"mongodb_aws"+"/instance/"+instanceID) //改为环境变量
+    if err!=nil || !resp.Node.Dir {
+        logger.Error("Can not get instance information from etcd", err) //所有这些出错消息最好命名为常量，放到开始的时候
+        return brokerapi.Binding{}, brokerapi.ErrInstanceDoesNotExist
+    } else {
+        logger.Debug("Successful get instance information from etcd. NodeInfo is "+resp.Node.Key)
+    }
+
+    //判断绑定是否存在，如果存在就报错
+    resp, err = etcdget("/servicebroker/"+"mongodb_aws"+"/instance/"+instanceID+"/binding") //改为环境变量
+    for i :=0 ;i<len(resp.Node.Nodes); i++ {
+        if resp.Node.Nodes[i].Dir && strings.HasSuffix(resp.Node.Nodes[i].Key,bindingID) {
+        	return brokerapi.Binding{}, brokerapi.ErrBindingAlreadyExists
+        }
+    }
+
+
+    //对于参数中的service_id和plan_id仅做校验，不再在binding中存储 todo需要将原来的包borkerapi进行修改，增加不匹配service_id和plan_id的错误类型
+    //do something 来在实例中创建用户 todo
+    type myCredentials struct {
+	Host     string `json:"host"`
+	Port     int    `json:"port"`
+	Username string `json:"username"`
+	Password string `json:"password"`
 	}
 
-	myBroker.BoundBindingDetails = details
-
-	myBroker.BoundInstanceIDs = append(myBroker.BoundInstanceIDs, instanceID)
-	myBroker.BoundBindingIDs = append(myBroker.BoundBindingIDs, bindingID)
-
-	return brokerapi.Binding{
+    myBinding:=brokerapi.Binding{
 		Credentials: myCredentials{
 			Host:     "127.0.0.1",
 			Port:     3000,
 			Username: "batman",
 			Password: "robin",
 		},
-		SyslogDrainURL: myBroker.SyslogDrainURL,
-	}, nil
+		SyslogDrainURL: "",
+	}
+
+
+    //把信息存储到etcd里面，同样这里有同步性的问题 todo怎么解决呢？
+    //先创建bindingID目录
+	_, err = etcdapi.Set(context.Background(), "/servicebroker/"+"mongodb_aws"+"/instance/"+instanceID+"/binding/"+bindingID,"", &client.SetOptions{Dir:true}) //todo这些要么是常量，要么应该用环境变量
+	if err != nil {
+		logger.Error("Can not create binding "+bindingID+" in etcd", err) //todo都应该改为日志key
+		return brokerapi.Binding{}, err
+	} else {
+		logger.Debug("Successful create binding "+bindingID+" in etcd",nil)
+	}
+	//然后创建一系列属性
+	etcdset("/servicebroker/"+"mongodb_aws"+"/instance/"+instanceID+"/binding/"+bindingID+"/app_guid",details.AppGUID)
+	tmpval,_:=json.Marshal(details.Parameters)
+	etcdset("/servicebroker/"+"mongodb_aws"+"/instance/"+instanceID+"/binding/"+bindingID+"/parameters",string(tmpval))
+	tmpval,_=json.Marshal(myBinding)
+	etcdset("/servicebroker/"+"mongodb_aws"+"/instance/"+instanceID+"/binding/"+bindingID+"/binding",string(tmpval))
+	//应该具体绑定创建的时候还有一些信息要存储，这样在服务绑定的时候，就可以读取这些信息来反馈! todo
+
+	return myBinding, nil
 }
 
 func (myBroker *myServiceBroker) Unbind(instanceID, bindingID string, details brokerapi.UnbindDetails) error {
 	// Unbind from instances here
-	myBroker.BrokerCalled = true
+	
+	//判断实例是否已经存在，如果不存在就报错
+	resp, err := etcdget("/servicebroker/"+"mongodb_aws"+"/instance/"+instanceID) //改为环境变量
+    if err!=nil || !resp.Node.Dir {
+        logger.Error("Can not get instance information from etcd", err) //所有这些出错消息最好命名为常量，放到开始的时候
+        return brokerapi.ErrInstanceDoesNotExist //这几个错误返回为空，是detele操作的要求吗？
+    } else {
+        logger.Debug("Successful get instance information from etcd. NodeInfo is "+resp.Node.Key)
+    }
 
-	myBroker.UnbindingDetails = details
+    //判断绑定是否存在，如果不存在就报错
+    resp, err = etcdget("/servicebroker/"+"mongodb_aws"+"/instance/"+instanceID+"/binding/"+bindingID) //改为环境变量
+    if err!=nil || !resp.Node.Dir {
+        logger.Error("Can not get binding information from etcd", err) //所有这些出错消息最好命名为常量，放到开始的时候
+        return brokerapi.ErrBindingDoesNotExist //这几个错误返回为空，是detele操作的要求吗？
+    } else {
+        logger.Debug("Successful get bingding information from etcd. NodeInfo is "+resp.Node.Key)
+    }
 
-	if sliceContains(instanceID, myBroker.ProvisionedInstanceIDs) {
-		if sliceContains(bindingID, myBroker.BoundBindingIDs) {
-			return nil
-		}
-		return brokerapi.ErrBindingDoesNotExist
+    //double check service_id和plan_id
+
+    //do somthing 去删除用户名和密码 todo
+
+	//然后删除etcd里面的纪录，这里也有可能有不一致的情况
+	_, err = etcdapi.Delete(context.Background(), "/servicebroker/"+"mongodb_aws"+"/instance/"+instanceID+"/binding/"+bindingID, &client.DeleteOptions{Recursive:true,Dir:true}) //todo这些要么是常量，要么应该用环境变量
+	if err != nil {
+		logger.Error("Can not delete binding "+bindingID+" in etcd", err) //todo都应该改为日志key
+		return errors.New("Internal Error!!")
+	} else {
+		logger.Debug("Successful delete bingding "+bindingID+" in etcd",nil)
 	}
 
-	return brokerapi.ErrInstanceDoesNotExist
+	return nil
 }
 
 func (myBroker *myServiceBroker) Update(instanceID string, details brokerapi.UpdateDetails, asyncAllowed bool) (brokerapi.IsAsync, error) {
 	// Update instance here
-	myBroker.BrokerCalled = true
-
-	if myBroker.UpdateError != nil {
-		return false, myBroker.UpdateError
-	}
-
-	myBroker.UpdateDetails = details
-	myBroker.UpdatedInstanceIDs = append(myBroker.UpdatedInstanceIDs, instanceID)
-	myBroker.AsyncAllowed = asyncAllowed
-	return myBroker.ShouldReturnAsync, nil
-}
-
-type myCredentials struct {
-	Host     string `json:"host"`
-	Port     int    `json:"port"`
-	Username string `json:"username"`
-	Password string `json:"password"`
-}
-
-func sliceContains(needle string, haystack []string) bool {
-	for _, element := range haystack {
-		if element == needle {
-			return true
-		}
-	}
-	return false
+	return brokerapi.IsAsync(true), nil
 }
 
 //定义日志和etcd的全局变量
@@ -274,6 +326,32 @@ func etcdget(key string) (*client.Response, error) {
 	return resp, err
 }
 
+func etcdset(key string,value string) (*client.Response, error) {
+	resp, err := etcdapi.Set(context.Background(), key,value, nil)
+	if err != nil {
+		logger.Error("Can not set "+key+" from etcd", err)
+	} else {
+		logger.Debug("Successful set " + key + " from etcd. value is " + value)
+	}
+	return resp, err
+}
+
+func findServiceName(service_id string) string {
+	resp, err := etcdget("/servicebroker/" + "mongodb_aws" + "/catalog/"+service_id+"/name") //需要修改为环境变量参数
+	if err !=nil {
+		return ""
+	}
+	return resp.Node.Value
+}
+
+func findServicePlanName(service_id,plan_id string) string {
+	resp, err := etcdget("/servicebroker/" + "mongodb_aws" + "/catalog/"+service_id+"/plan/"+plan_id+"/name") //需要修改为环境变量参数
+	if err !=nil {
+		return ""
+	}
+	return resp.Node.Value
+}
+
 func main() {
 	//初始化参数，参数应该从环境变量中获取
 	var username, password string
@@ -281,11 +359,11 @@ func main() {
 
 	//初始化日志对象，日志输出到stdout
 	logger = lager.NewLogger("mongodb_aws")                          //替换为环境变量
-	logger.RegisterSink(lager.NewWriterSink(os.Stdout, lager.DEBUG)) //默认日志级别
+	logger.RegisterSink(lager.NewWriterSink(os.Stdout, lager.ERROR)) //默认日志级别
 
 	//初始化etcd客户端
 	cfg := client.Config{
-		Endpoints: []string{"http://localhost:2379"}, //替换为环境变量
+		Endpoints: []string{"http://192.168.99.100:2379"}, //替换为环境变量
 		Transport: client.DefaultTransport,
 		// set timeout per request to fail fast when the target endpoint is unavailable
 		HeaderTimeoutPerRequest: time.Second,
