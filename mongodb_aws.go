@@ -42,6 +42,14 @@ type serviceInfo struct {
 //
 //}
 
+type myCredentials struct {
+	Uri 		string `json:"uri"`
+	Hostname    string `json:"host"`
+	Port     	string `json:"port"`
+	Username 	string `json:"username"`
+	Password 	string `json:"password"`
+}
+
 func (myBroker *myServiceBroker) Services() []brokerapi.Service {
     //初始化一系列所需要的结构体，好累啊
     myServices:=[]brokerapi.Service{}
@@ -315,7 +323,7 @@ func (myBroker *myServiceBroker) Deprovision(instanceID string, details brokerap
     					return brokerapi.IsAsync(false), errors.New("Can't Login to mongodb "+myServiceInfo.Url)
   					}
 
-  					//创建一个名为instanceID的数据库，并随机的创建用户名和密码，这个用户名是该数据库的管理员
+  					//选择服务创建的数据库
   					userdb:=session.DB(myServiceInfo.Database)
   					//这个服务很快，所以通过同步模式直接返回了
   					err=userdb.DropDatabase()
@@ -351,7 +359,8 @@ func (myBroker *myServiceBroker) Bind(instanceID, bindingID string, details brok
 	// Bind to instances here
 	// Return a binding which contains a credentials object that can be marshalled to JSON,
 	// and (optionally) a syslog drain URL.
-
+	var mycredentials myCredentials
+	var myBinding brokerapi.Binding
 	//判断实例是否已经存在，如果不存在就报错
 	resp, err := etcdget("/servicebroker/"+"mongodb_aws"+"/instance/"+instanceID) //改为环境变量
     if err!=nil || !resp.Node.Dir {
@@ -369,26 +378,87 @@ func (myBroker *myServiceBroker) Bind(instanceID, bindingID string, details brok
         }
     }
 
+    //对于参数中的service_id和plan_id仅做校验，不再在binding中存储
+    var servcie_id,plan_id string
 
-    //对于参数中的service_id和plan_id仅做校验，不再在binding中存储 todo需要将原来的包borkerapi进行修改，增加不匹配service_id和plan_id的错误类型
-    //do something 来在实例中创建用户 todo
-    type myCredentials struct {
-	Host     string `json:"host"`
-	Port     int    `json:"port"`
-	Username string `json:"username"`
-	Password string `json:"password"`
+	//从etcd中取得参数。
+	resp, err = etcdapi.Get(context.Background(), "/servicebroker/"+"mongodb_aws"+"/instance/"+instanceID, &client.GetOptions{Recursive:true}) //改为环境变量
+    
+	for i := 0; i < len(resp.Node.Nodes); i++ {
+		if ! resp.Node.Nodes[i].Dir {
+			switch strings.ToLower(resp.Node.Nodes[i].Key) {
+				case strings.ToLower(resp.Node.Key)+"/service_id":
+					servcie_id=resp.Node.Nodes[i].Value
+				case strings.ToLower(resp.Node.Key)+"/plan_id":
+					plan_id=resp.Node.Nodes[i].Value
+			}
+		}
 	}
 
-    myBinding:=brokerapi.Binding{
-		Credentials: myCredentials{
-			Host:     "127.0.0.1",
-			Port:     3000,
-			Username: "batman",
-			Password: "robin",
-		},
-		SyslogDrainURL: "",
-	}
+	//并且要核对一下detail里面的service_id和plan_id。出错消息现在是500，需要更改一下源代码，以便更改出错代码
+	if servcie_id!=details.ServiceID || plan_id!=details.PlanID {
+		logger.Error("ServiceID or PlanID not correct!!", nil) //所有这些出错消息最好命名为常量，放到开始的时候
+    	return brokerapi.Binding{}, errors.New("ServiceID or PlanID not correct!! instanceID "+instanceID)
+	}	
 
+	//隐藏属性不得不单独获取。取得当时绑定服务得到信息
+	var myServiceInfo serviceInfo
+	resp, err=etcdget("/servicebroker/"+"mongodb_aws"+"/instance/"+instanceID+"/_info")
+	json.Unmarshal([]byte(resp.Node.Value),&myServiceInfo) 
+
+    //根据绑定要求，在数据库里面创建一个readwrite权限的用户
+    //根据不同的服务和plan，选择创建的命令 ［每次增加不同的服务或者计划，只需要修改这里就好了。］
+	switch myServiceInfo.Service_name {
+		case "mongodb_aws" : 
+			switch myServiceInfo.Plan_name {
+				case "shared" :
+					//初始化mongodb的链接串
+					session, err := mgo.Dial(myServiceInfo.Url)  //连接数据库
+  					if err != nil {
+    					return brokerapi.Binding{}, errors.New("Can't connet to mongodb "+myServiceInfo.Url)
+  					}
+  					defer session.Close()
+  					session.SetMode(mgo.Monotonic, true)
+  					mongodb := session.DB("admin")	 //数据库名称
+  					err = mongodb.Login(myServiceInfo.Admin_user,myServiceInfo.Admin_password) 
+  					if err != nil {
+    					return brokerapi.Binding{}, errors.New("Can't Login to mongodb "+myServiceInfo.Url)
+  					}
+
+  					//去创建一个用户，权限为RoleReadWrite
+  					userdb:=session.DB(myServiceInfo.Database)
+  					newusername:=getguid()
+  					newpassword:=getguid()
+  					//这个服务很快，所以通过同步模式直接返回了
+  					err=userdb.UpsertUser(&mgo.User{
+  							Username:	newusername,
+  							Password:	newpassword,
+  							Roles: []mgo.Role{
+  								mgo.Role(mgo.RoleReadWrite),
+  							},
+  						})
+
+  					if err != nil {
+    					return brokerapi.Binding{}, errors.New("Can't CreateUser in mongodb "+myServiceInfo.Url+" as user:"+newusername)
+    					logger.Error("Can't DropDatabase in mongodb", err)
+  					} else {
+  						logger.Debug("Success CreateUser in mongodb. database name="+myServiceInfo.Database+" as user:"+newusername,nil)
+  					}
+  					mycredentials=myCredentials{
+						Uri:	"mongo://"+newusername+":"+newpassword+"@"+myServiceInfo.Url+"/"+myServiceInfo.Database,
+						Hostname:     strings.Split(myServiceInfo.Url,":")[0],
+						Port:     strings.Split(myServiceInfo.Url,":")[1],
+						Username: newusername,
+						Password: newpassword,
+						}
+					myBinding=brokerapi.Binding{Credentials:mycredentials,}
+
+				default : //没有相关处理handle应该报错才对
+					return brokerapi.Binding{}, errors.New("No Plan Handle for "+myServiceInfo.Service_name)
+			}
+		default : //没有相关的处理handle应该报错才对
+			return brokerapi.Binding{}, errors.New("No Service Handle for "+myServiceInfo.Plan_name)
+	}
 
     //把信息存储到etcd里面，同样这里有同步性的问题 todo怎么解决呢？
     //先创建bindingID目录
@@ -405,24 +475,47 @@ func (myBroker *myServiceBroker) Bind(instanceID, bindingID string, details brok
 	etcdset("/servicebroker/"+"mongodb_aws"+"/instance/"+instanceID+"/binding/"+bindingID+"/parameters",string(tmpval))
 	tmpval,_=json.Marshal(myBinding)
 	etcdset("/servicebroker/"+"mongodb_aws"+"/instance/"+instanceID+"/binding/"+bindingID+"/binding",string(tmpval))
-	//应该具体绑定创建的时候还有一些信息要存储，这样在服务绑定的时候，就可以读取这些信息来反馈! todo
+	//存储隐藏信息_info
+	tmpval,_=json.Marshal(mycredentials)
+	etcdset("/servicebroker/"+"mongodb_aws"+"/instance/"+instanceID+"/binding/"+bindingID+"/_info",string(tmpval))
 
 	return myBinding, nil
 }
 
 func (myBroker *myServiceBroker) Unbind(instanceID, bindingID string, details brokerapi.UnbindDetails) error {
 	// Unbind from instances here
-	
+	var mycredentials myCredentials
+	var myServiceInfo serviceInfo
 	//判断实例是否已经存在，如果不存在就报错
-	resp, err := etcdget("/servicebroker/"+"mongodb_aws"+"/instance/"+instanceID) //改为环境变量
+	resp, err := etcdapi.Get(context.Background(), "/servicebroker/"+"mongodb_aws"+"/instance/"+instanceID, &client.GetOptions{Recursive:true}) //改为环境变量
     if err!=nil || !resp.Node.Dir {
         logger.Error("Can not get instance information from etcd", err) //所有这些出错消息最好命名为常量，放到开始的时候
         return brokerapi.ErrInstanceDoesNotExist //这几个错误返回为空，是detele操作的要求吗？
     } else {
         logger.Debug("Successful get instance information from etcd. NodeInfo is "+resp.Node.Key)
     }
+	
+	var servcie_id,plan_id string
 
-    //判断绑定是否存在，如果不存在就报错
+	//从etcd中取得参数。
+	for i := 0; i < len(resp.Node.Nodes); i++ {
+		if ! resp.Node.Nodes[i].Dir {
+			switch strings.ToLower(resp.Node.Nodes[i].Key) {
+				case strings.ToLower(resp.Node.Key)+"/service_id":
+					servcie_id=resp.Node.Nodes[i].Value
+				case strings.ToLower(resp.Node.Key)+"/plan_id":
+					plan_id=resp.Node.Nodes[i].Value
+			}
+		}
+	}
+	
+	//并且要核对一下detail里面的service_id和plan_id。出错消息现在是500，需要更改一下源代码，以便更改出错代码
+	if servcie_id!=details.ServiceID || plan_id!=details.PlanID {
+		logger.Error("ServiceID or PlanID not correct!!", nil) //所有这些出错消息最好命名为常量，放到开始的时候
+    	return errors.New("ServiceID or PlanID not correct!! instanceID "+instanceID)
+	}	
+
+	//判断绑定是否存在，如果不存在就报错
     resp, err = etcdget("/servicebroker/"+"mongodb_aws"+"/instance/"+instanceID+"/binding/"+bindingID) //改为环境变量
     if err!=nil || !resp.Node.Dir {
         logger.Error("Can not get binding information from etcd", err) //所有这些出错消息最好命名为常量，放到开始的时候
@@ -431,9 +524,55 @@ func (myBroker *myServiceBroker) Unbind(instanceID, bindingID string, details br
         logger.Debug("Successful get bingding information from etcd. NodeInfo is "+resp.Node.Key)
     }
 
-    //double check service_id和plan_id
+	//根据存储在etcd中的service_name和plan_name来确定到底调用那一段处理。注意这个时候不能像Provision一样去catalog里面读取了。
+	//因为这个时候的数据不一定和创建的时候一样，plan等都有可能变化。同样的道理，url，用户名，密码都应该从_info中解码出来
 
-    //do somthing 去删除用户名和密码 todo
+	//隐藏属性不得不单独获取
+	resp, err=etcdget("/servicebroker/"+"mongodb_aws"+"/instance/"+instanceID+"/_info")
+	json.Unmarshal([]byte(resp.Node.Value),&myServiceInfo) 
+
+	//隐藏属性不得不单独获取
+	resp, err=etcdget("/servicebroker/"+"mongodb_aws"+"/instance/"+instanceID+"/binding/"+bindingID+"/_info")
+	json.Unmarshal([]byte(resp.Node.Value),&mycredentials) 
+
+    //do somthing 去删除用户名和密码 
+	switch myServiceInfo.Service_name {
+		case "mongodb_aws" : 
+			switch myServiceInfo.Plan_name {
+				case "shared" :
+					//初始化mongodb的链接串
+					session, err := mgo.Dial(myServiceInfo.Url)  //连接数据库
+  					if err != nil {
+    					return errors.New("Can't connet to mongodb "+myServiceInfo.Url)
+  					}
+  					defer session.Close()
+  					session.SetMode(mgo.Monotonic, true)
+  					mongodb := session.DB("admin")	 //数据库名称
+  					err = mongodb.Login(myServiceInfo.Admin_user,myServiceInfo.Admin_password) 
+  					if err != nil {
+    					return errors.New("Can't Login to mongodb "+myServiceInfo.Url)
+  					}
+
+  					//选择服务创建的数据库
+  					userdb:=session.DB(myServiceInfo.Database)
+  					//这个服务很快，所以通过同步模式直接返回了
+  					err=userdb.RemoveUser(mycredentials.Username)
+
+  					if err != nil {
+    					return errors.New("Can't DropUser in mongodb "+myServiceInfo.Url)
+    					logger.Error("Can't DropUser in mongodb", err)
+  					} else {
+  						logger.Debug("Success DropUser in mongodb. user name="+mycredentials.Username)
+  					}
+
+
+				default : //没有相关处理handle应该报错才对
+					return errors.New("No Plan Handle for "+myServiceInfo.Service_name)
+			}
+		default : //没有相关的处理handle应该报错才对
+			return errors.New("No Service Handle for "+myServiceInfo.Plan_name)
+	}
+
 
 	//然后删除etcd里面的纪录，这里也有可能有不一致的情况
 	_, err = etcdapi.Delete(context.Background(), "/servicebroker/"+"mongodb_aws"+"/instance/"+instanceID+"/binding/"+bindingID, &client.DeleteOptions{Recursive:true,Dir:true}) //todo这些要么是常量，要么应该用环境变量
