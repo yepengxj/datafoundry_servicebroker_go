@@ -13,11 +13,34 @@ import (
     "strconv"
     "strings"
     "errors"
+    "gopkg.in/mgo.v2"
+    "crypto/md5"
+    "crypto/rand"
+    "encoding/base64"
+    "encoding/hex"
+    "io"
 )
+
+
 
 type myServiceBroker struct {
 
 }
+
+type serviceInfo struct {
+	Service_name 	string 		`json:"service_name"`
+	Plan_name 		string 		`json:"plan_name"`
+	Url				string 		`json:"url"`
+	Admin_user		string 		`json:"admin_user"`
+	Admin_password	string 		`json:"admin_password"`
+	Database		string 		`json:"database"`
+	User			string 		`json:"user"`
+	Password		string 		`json:"password"`
+}
+
+//type planInfo struct {
+//
+//}
 
 func (myBroker *myServiceBroker) Services() []brokerapi.Service {
     //初始化一系列所需要的结构体，好累啊
@@ -106,6 +129,9 @@ func (myBroker *myServiceBroker) Provision(
 ) (brokerapi.ProvisionedServiceSpec, error) {
 	// Provision a new instance here. If async is allowed, the broker can still
 	// chose to provision the instance synchronously.
+	//初始化
+	var DashboardURL string
+	var myServiceInfo serviceInfo
 
 	//判断实例是否已经存在，如果存在就报错
 	resp, err := etcdget("/servicebroker/"+"mongodb_aws"+"/instance") //改为环境变量
@@ -115,10 +141,9 @@ func (myBroker *myServiceBroker) Provision(
         }
     }
 
-	//do something important!!
 	//判断servcie_id和plan_id是否正确
-	service_name:=findServiceName(details.ServiceID)
-	plan_name:=findServicePlanName(details.ServiceID,details.PlanID)
+	service_name:=findServiceNameInCatalog(details.ServiceID)
+	plan_name:=findServicePlanNameInCatalog(details.ServiceID,details.PlanID)
 	if service_name=="" || plan_name=="" {
 		return brokerapi.ProvisionedServiceSpec{}, errors.New("Service_id or plan_id not correct!!")
 	}
@@ -130,8 +155,57 @@ func (myBroker *myServiceBroker) Provision(
 			//开始根据不同的plan进行处理
 			switch plan_name {
 				case "shared" :
-					fmt.Println("------------provistion shared instance------------")
-					
+					//初始化mongodb的链接串
+					var		mongoURL = "192.168.99.100:32768" //修改为环境变量获取
+					var		mongoADMINUSER="asiainfoLDP"
+					var		mongoADMINPASSWORD="6ED9BA74-75FD-4D1B-8916-842CB936AC1A"
+					session, err := mgo.Dial(mongoURL)  //连接数据库
+  					if err != nil {
+    					return brokerapi.ProvisionedServiceSpec{}, errors.New("Can't connet to mongodb "+mongoURL)
+  					}
+  					defer session.Close()
+  					session.SetMode(mgo.Monotonic, true)
+  					mongodb := session.DB("admin")	 //数据库名称
+  					err = mongodb.Login(mongoADMINUSER,mongoADMINPASSWORD) 
+  					if err != nil {
+    					return brokerapi.ProvisionedServiceSpec{}, errors.New("Can't Login to mongodb "+mongoURL)
+  					}
+
+  					//创建一个名为instanceID的数据库，并随机的创建用户名和密码，这个用户名是该数据库的管理员
+  					newdb:=session.DB(instanceID)
+  					newusername:=getguid()
+  					newpassword:=getguid()
+  					//为dashbord赋值 todo dashboard应该提供一个界面才对
+  					DashboardURL="mongodb://"+newusername+":"+newpassword+"@"+mongoURL+"/"+instanceID
+  					//这个服务很快，所以通过同步模式直接返回了
+  					err=newdb.UpsertUser(&mgo.User{
+  							Username:	newusername,
+  							Password:	newpassword,
+  							Roles: []mgo.Role{
+  								mgo.Role(mgo.RoleDBAdmin),
+  							},
+  						})
+
+  					if err != nil {
+    					return brokerapi.ProvisionedServiceSpec{}, errors.New("Can't Create User in mongodb "+mongoURL)
+    					logger.Error("Can't Create User in mongodb", err)
+  					} else {
+  						logger.Debug("Success Create User in mongodb. Username="+newusername+" Password="+newpassword)
+  					}
+
+  					//赋值隐藏属性
+					myServiceInfo=serviceInfo{
+						Service_name:service_name,
+						Plan_name:plan_name,
+						Url:mongoURL,
+						Admin_user:mongoADMINUSER,
+						Admin_password:mongoADMINPASSWORD,
+						Database:instanceID,
+						User:newusername,
+						Password:newpassword,
+					}
+
+
 				default : //没有相关处理handle应该报错才对
 					return brokerapi.ProvisionedServiceSpec{}, errors.New("No Plan Handle for "+plan_name)
 
@@ -141,7 +215,7 @@ func (myBroker *myServiceBroker) Provision(
 	}
 
 	//假设服务已经生成好了，用来做测试 
-	DashboardURL:="etcd://testuser:password@127.0.0.1:2379"
+	
 
 	//写入etcd 话说如果这个时候写入失败，那不就出现数据不一致的情况了么！todo
 	//先创建instanceid目录
@@ -160,9 +234,12 @@ func (myBroker *myServiceBroker) Provision(
 	tmpval,_:=json.Marshal(details.Parameters)
 	etcdset("/servicebroker/"+"mongodb_aws"+"/instance/"+instanceID+"/parameters",string(tmpval))
 	etcdset("/servicebroker/"+"mongodb_aws"+"/instance/"+instanceID+"/dashboardurl",DashboardURL)
+	//存储隐藏信息_info
+	tmpval,_=json.Marshal(myServiceInfo)
+	etcdset("/servicebroker/"+"mongodb_aws"+"/instance/"+instanceID+"/_info",string(tmpval))
+
 	//创建绑定目录
 	_, err = etcdapi.Set(context.Background(), "/servicebroker/"+"mongodb_aws"+"/instance/"+instanceID+"/binding","", &client.SetOptions{Dir:true})
-	//应该具体服务创建的时候还有一些信息要存储，这样在服务绑定的时候，就可以读取这些信息来反馈! todo
 
 	//完成所有操作后，返回DashboardURL
 	return brokerapi.ProvisionedServiceSpec{DashboardURL: DashboardURL}, nil
@@ -180,8 +257,11 @@ func (myBroker *myServiceBroker) Deprovision(instanceID string, details brokerap
 	// Deprovision a new instance here. If async is allowed, the broker can still
 	// chose to deprovision the instance synchronously, hence the first return value.
 
+	var myServiceInfo serviceInfo
+
 	//判断实例是否已经存在，如果不存在就报错
-	resp, err := etcdget("/servicebroker/"+"mongodb_aws"+"/instance/"+instanceID) //改为环境变量
+	resp, err := etcdapi.Get(context.Background(), "/servicebroker/"+"mongodb_aws"+"/instance/"+instanceID, &client.GetOptions{Recursive:true}) //改为环境变量
+    
     if err!=nil || !resp.Node.Dir {
         logger.Error("Can not get instance information from etcd", err) //所有这些出错消息最好命名为常量，放到开始的时候
         return brokerapi.IsAsync(false), brokerapi.ErrInstanceDoesNotExist
@@ -189,10 +269,71 @@ func (myBroker *myServiceBroker) Deprovision(instanceID string, details brokerap
         logger.Debug("Successful get instance information from etcd. NodeInfo is "+resp.Node.Key)
     }
 
+    var servcie_id,plan_id string
+
+	//从etcd中取得参数。
+	for i := 0; i < len(resp.Node.Nodes); i++ {
+		if ! resp.Node.Nodes[i].Dir {
+			switch strings.ToLower(resp.Node.Nodes[i].Key) {
+				case strings.ToLower(resp.Node.Key)+"/service_id":
+					servcie_id=resp.Node.Nodes[i].Value
+				case strings.ToLower(resp.Node.Key)+"/plan_id":
+					plan_id=resp.Node.Nodes[i].Value
+			}
+		}
+	}
+
+	//并且要核对一下detail里面的service_id和plan_id。出错消息现在是500，需要更改一下源代码，以便更改出错代码
+	if servcie_id!=details.ServiceID || plan_id!=details.PlanID {
+		logger.Error("ServiceID or PlanID not correct!!", nil) //所有这些出错消息最好命名为常量，放到开始的时候
+    	return brokerapi.IsAsync(false), errors.New("ServiceID or PlanID not correct!! instanceID "+instanceID)
+	}	
     //是否要判断里面有没有绑定啊？todo
 
-	//应该做一些事情，去删除这个实例 todo
-	//并且要核对一下detail里面的service_id和plan_id，做一个double check!!todo
+	//根据存储在etcd中的service_name和plan_name来确定到底调用那一段处理。注意这个时候不能像Provision一样去catalog里面读取了。
+	//因为这个时候的数据不一定和创建的时候一样，plan等都有可能变化。同样的道理，url，用户名，密码都应该从_info中解码出来
+
+	//隐藏属性不得不单独获取
+	resp, err=etcdget("/servicebroker/"+"mongodb_aws"+"/instance/"+instanceID+"/_info")
+	json.Unmarshal([]byte(resp.Node.Value),&myServiceInfo) 
+
+	//根据不同的服务和plan，选择创建的命令 ［每次增加不同的服务或者计划，只需要修改这里就好了。］
+	switch myServiceInfo.Service_name {
+		case "mongodb_aws" : 
+			switch myServiceInfo.Plan_name {
+				case "shared" :
+					//初始化mongodb的链接串
+					session, err := mgo.Dial(myServiceInfo.Url)  //连接数据库
+  					if err != nil {
+    					return brokerapi.IsAsync(false), errors.New("Can't connet to mongodb "+myServiceInfo.Url)
+  					}
+  					defer session.Close()
+  					session.SetMode(mgo.Monotonic, true)
+  					mongodb := session.DB("admin")	 //数据库名称
+  					err = mongodb.Login(myServiceInfo.Admin_user,myServiceInfo.Admin_password) 
+  					if err != nil {
+    					return brokerapi.IsAsync(false), errors.New("Can't Login to mongodb "+myServiceInfo.Url)
+  					}
+
+  					//创建一个名为instanceID的数据库，并随机的创建用户名和密码，这个用户名是该数据库的管理员
+  					userdb:=session.DB(myServiceInfo.Database)
+  					//这个服务很快，所以通过同步模式直接返回了
+  					err=userdb.DropDatabase()
+
+  					if err != nil {
+    					return brokerapi.IsAsync(false), errors.New("Can't DropDatabase in mongodb "+myServiceInfo.Url)
+    					logger.Error("Can't DropDatabase in mongodb", err)
+  					} else {
+  						logger.Debug("Success DropDatabase in mongodb. database name="+myServiceInfo.Database)
+  					}
+
+
+				default : //没有相关处理handle应该报错才对
+					return brokerapi.IsAsync(false), errors.New("No Plan Handle for "+myServiceInfo.Service_name)
+			}
+		default : //没有相关的处理handle应该报错才对
+			return brokerapi.IsAsync(false), errors.New("No Service Handle for "+myServiceInfo.Plan_name)
+	}
 
 	//然后删除etcd里面的纪录，这里也有可能有不一致的情况
 	_, err = etcdapi.Delete(context.Background(), "/servicebroker/"+"mongodb_aws"+"/instance/"+instanceID, &client.DeleteOptions{Recursive:true,Dir:true}) //todo这些要么是常量，要么应该用环境变量
@@ -336,7 +477,7 @@ func etcdset(key string,value string) (*client.Response, error) {
 	return resp, err
 }
 
-func findServiceName(service_id string) string {
+func findServiceNameInCatalog(service_id string) string {
 	resp, err := etcdget("/servicebroker/" + "mongodb_aws" + "/catalog/"+service_id+"/name") //需要修改为环境变量参数
 	if err !=nil {
 		return ""
@@ -344,12 +485,27 @@ func findServiceName(service_id string) string {
 	return resp.Node.Value
 }
 
-func findServicePlanName(service_id,plan_id string) string {
+func findServicePlanNameInCatalog(service_id,plan_id string) string {
 	resp, err := etcdget("/servicebroker/" + "mongodb_aws" + "/catalog/"+service_id+"/plan/"+plan_id+"/name") //需要修改为环境变量参数
 	if err !=nil {
 		return ""
 	}
 	return resp.Node.Value
+}
+
+func getmd5string(s string) string {
+    h := md5.New()
+    h.Write([]byte(s))
+    return hex.EncodeToString(h.Sum(nil))
+}
+
+func getguid() string {
+    b := make([]byte, 48)
+
+    if _, err := io.ReadFull(rand.Reader, b); err != nil {
+        return ""
+    }
+    return getmd5string(base64.URLEncoding.EncodeToString(b))
 }
 
 func main() {
