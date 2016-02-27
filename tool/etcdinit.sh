@@ -37,7 +37,7 @@ docker exec etcd /etcdctl mkdir /servicebroker/mongodb_aws/catalog/A25DE423-484E
 docker exec etcd /etcdctl set /servicebroker/mongodb_aws/catalog/A25DE423-484E-4252-B6FE-EA4F347BCE3D/name "mongodb_aws"
 docker exec etcd /etcdctl set /servicebroker/mongodb_aws/catalog/A25DE423-484E-4252-B6FE-EA4F347BCE3D/description "A MongoDB for AWS"
 docker exec etcd /etcdctl set /servicebroker/mongodb_aws/catalog/A25DE423-484E-4252-B6FE-EA4F347BCE3D/bindable true
-docker exec etcd /etcdctl set /servicebroker/mongodb_aws/catalog/A25DE423-484E-4252-B6FE-EA4F347BCE3D/planupdatable true
+docker exec etcd /etcdctl set /servicebroker/mongodb_aws/catalog/A25DE423-484E-4252-B6FE-EA4F347BCE3D/planupdatable false
 docker exec etcd /etcdctl set /servicebroker/mongodb_aws/catalog/A25DE423-484E-4252-B6FE-EA4F347BCE3D/tags 'amqp,rabbitmq,messaging'
 docker exec etcd /etcdctl set /servicebroker/mongodb_aws/catalog/A25DE423-484E-4252-B6FE-EA4F347BCE3D/metadata '{"displayName":"CloudAMQP","imageUrl":"https://d33na3ni6eqf5j.cloudfront.net/app_resources/18492/thumbs_112/img9069612145282015279.png","longDescription":"Managed, highly available, RabbitMQ clusters in the cloud","providerDisplayName":"84codes AB","documentationUrl":"http://docs.cloudfoundry.com/docs/dotcom/marketplace/services/cloudamqp.html","supportUrl":"http://www.cloudamqp.com/support.html"}'
 
