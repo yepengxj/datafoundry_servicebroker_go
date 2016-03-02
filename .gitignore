@@ -6,6 +6,7 @@ mongodb_aws
 # Folders
 _obj
 _test
+/tool/*
 _tool
 # Architecture specific extensions/prefixes
 *.[568vq]
