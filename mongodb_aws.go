@@ -1017,20 +1017,6 @@ func main() {
 	mongoAdminUser = getenv("MONGOADMINUSER")         //共享实例和独立实例的管理员用户名
 	mongoAdminPassword = getenv("MONGOADMINPASSWORD") //共享实例和独立实例的管理员密码
 
-	/* 环境变量案例
-
-	export ETCDENDPOINT="http://192.168.99.100:2379"
-	export BROKERPORT="8000"
-	export MONGOURL="54.222.155.67:27017"
-	export MONGOADMINUSER="asiainfoLDP"
-	export MONGOADMINPASSWORD="6ED9BA74-75FD-4D1B-8916-842CB936AC1A"
-
-
-	//aws客户端还需要额外两个环境变量
-	export AWS_ACCESS_KEY_ID=AKIAO2SO52RKIE7BCSHA
-	export AWS_SECRET_ACCESS_KEY=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
-	*/
-
 	//初始化日志对象，日志输出到stdout
 	logger = lager.NewLogger(servcieBrokerName)
 	logger.RegisterSink(lager.NewWriterSink(os.Stdout, lager.INFO)) //默认日志级别
