@@ -8,20 +8,17 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/coreos/etcd/client"
 	"github.com/pivotal-cf/brokerapi"
 	"github.com/pivotal-golang/lager"
 	"golang.org/x/net/context"
-	"gopkg.in/mgo.v2"
 	"io"
 	"net/http"
 	"os"
 	"strconv"
 	"strings"
 	"time"
+	handler "github.com/asiainfoLDP/datafoundry_servicebroker_mongodb_aws/handler"
 )
 
 type myServiceBroker struct {
@@ -133,10 +130,9 @@ func (myBroker *myServiceBroker) Provision(
 ) (brokerapi.ProvisionedServiceSpec, error) {
 
 	//初始化
-	var DashboardURL string
 	var provsiondetail brokerapi.ProvisionedServiceSpec
-	var myServiceInfo serviceInfo
-	var newpassword, newusername string
+	var myServiceInfo handler.ServiceInfo
+	
 
 	//判断实例是否已经存在，如果存在就报错
 	resp, err := etcdget("/servicebroker/" + servcieBrokerName + "/instance") //改为环境变量
@@ -163,144 +159,28 @@ func (myBroker *myServiceBroker) Provision(
 	}
 	//是否要检查service和plan的status是否允许创建 todo
 
-	//根据不同的服务和plan，选择创建的命令 ［每次增加不同的服务或者计划，只需要修改这里就好了。］
-	switch service_name {
-	case managedServiceName: //需要配置为Service的环境变量
-		//开始根据不同的plan进行处理
-		switch plan_name {
-		case "shared":
-			//初始化mongodb的链接串
-			session, err := mgo.Dial(mongoUrl) //连接数据库
-			if err != nil {
-				logger.Error("Can't connet to mongodb", err)
-				return brokerapi.ProvisionedServiceSpec{}, errors.New("Can't connet to mongodb " + mongoUrl)
-			}
-			defer session.Close()
-			session.SetMode(mgo.Monotonic, true)
-			mongodb := session.DB("admin") //数据库名称
-			err = mongodb.Login(mongoAdminUser, mongoAdminPassword)
-			if err != nil {
-				logger.Error("Can't Login to mongodb", err)
-				return brokerapi.ProvisionedServiceSpec{}, errors.New("Can't Login to mongodb " + mongoUrl)
-			}
+	//生成具体的handler对象
+	myHandler,err:= handler.New(service_name+"_"+plan_name)
 
-			//创建一个名为instanceID的数据库，并随机的创建用户名和密码，这个用户名是该数据库的管理员
-			newdb := session.DB(instanceID)
-			newusername = getguid()
-			newpassword = getguid()
-			//为dashbord赋值 todo dashboard应该提供一个界面才对
-			DashboardURL = "mongodb://" + newusername + ":" + newpassword + "@" + mongoUrl + "/" + instanceID
-			//这个服务很快，所以通过同步模式直接返回了
-			err = newdb.UpsertUser(&mgo.User{
-				Username: newusername,
-				Password: newpassword,
-				Roles: []mgo.Role{
-					mgo.Role(mgo.RoleDBAdmin),
-				},
-			})
-
-			if err != nil {
-				logger.Error("Can't Create User in mongodb", err)
-				return brokerapi.ProvisionedServiceSpec{}, errors.New("Can't Create User in mongodb " + mongoUrl)
-			} else {
-				logger.Debug("Success Create User in mongodb. Username=" + newusername + " Password=" + newpassword)
-			}
-
-			//赋值隐藏属性
-			myServiceInfo = serviceInfo{
-				Service_name:   service_name,
-				Plan_name:      plan_name,
-				Url:            mongoUrl,
-				Admin_user:     mongoAdminUser,
-				Admin_password: mongoAdminPassword,
-				Database:       instanceID,
-				User:           newusername,
-				Password:       newpassword,
-			}
-
-			provsiondetail = brokerapi.ProvisionedServiceSpec{DashboardURL: DashboardURL, IsAsync: false}
-
-		case "standalone":
-
-			//需要有两个环境变量 AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY
-
-			//初始化aws client
-			svc := ec2.New(session.New(&aws.Config{Region: aws.String(awsRegion)}))
-			//准备管理用户名和密码
-			newusername = getguid()
-			newpassword = getguid()
-			//拼接启动aws实例用的userdata
-			//userdate sample
-			//#!/bin/bash
-			//mongo <<!!!
-			//use admin
-			//db.auth('asiainfoLDP','6ED9BA74-75FD-4D1B-8916-842CB936AC1A');
-			//db.createUser({ user: 'test', pwd: 'test', roles: [ { role: 'root', db: 'admin' } ] });
-			//!!!
-
-			userdata := "#!/bin/bash \n mongo <<!!! \n use admin \n db.auth('" + mongoAdminUser + "','" + mongoAdminPassword + "'); \n db.createUser({ user: '" + newusername + "', pwd: '" + newpassword + "', roles: [ { role: 'root', db: 'admin' } ] }); \n !!!"
-			// Specify the details of the instance that you want to create.
-			runResult, err := svc.RunInstances(&ec2.RunInstancesInput{
-				ImageId:        aws.String(imageId),
-				InstanceType:   aws.String(instanceType),
-				KeyName:        aws.String(keyName),
-				SecurityGroups: []*string{aws.String(securityGroups)},
-				MinCount:       aws.Int64(1),
-				MaxCount:       aws.Int64(1),
-				UserData:       aws.String(base64.StdEncoding.EncodeToString([]byte(userdata))),
-			})
-
-			if err != nil {
-				logger.Error("Could not create aws instance", err)
-				return brokerapi.ProvisionedServiceSpec{}, errors.New("Could not create aws instance")
-			}
-
-			logger.Info("Created aws instance " + *runResult.Instances[0].InstanceId)
-			awsmongourl := *runResult.Instances[0].PrivateIpAddress + ":27017"
-
-			// Add tags to the created instance
-			_, errtag := svc.CreateTags(&ec2.CreateTagsInput{
-				Resources: []*string{runResult.Instances[0].InstanceId},
-				Tags: []*ec2.Tag{
-					{
-						Key:   aws.String("Name"),
-						Value: aws.String("service_mongodb_" + *runResult.Instances[0].InstanceId),
-					},
-				},
-			})
-			if errtag != nil {
-				logger.Error("Could not create tags for instance", err)
-				return brokerapi.ProvisionedServiceSpec{}, errors.New("Could not create tags for instance" + *runResult.Instances[0].InstanceId)
-			}
-			logger.Info("Successfully create aws instance and tagged" + *runResult.Instances[0].InstanceId)
-
-			//赋值隐藏属性
-			myServiceInfo = serviceInfo{
-				Service_name:   service_name,
-				Plan_name:      plan_name,
-				Url:            *runResult.Instances[0].InstanceId, //aws的实例id
-				Admin_user:     mongoAdminUser,
-				Admin_password: mongoAdminPassword,
-				Database:       "admin",
-				User:           newusername,
-				Password:       newpassword,
-			}
-
-			//为dashbord赋值 todo dashboard应该提供一个界面才对
-			DashboardURL = "mongodb://" + newusername + ":" + newpassword + "@" + awsmongourl
-			//表示是异步返回
-			provsiondetail = brokerapi.ProvisionedServiceSpec{DashboardURL: DashboardURL, IsAsync: true}
-
-		default: //没有相关处理handle应该报错才对
-			logger.Info("No Plan Handle for " + plan_name)
-			return brokerapi.ProvisionedServiceSpec{}, errors.New("No Plan Handle for " + plan_name)
-
-		}
-	default: //没有相关的处理handle应该报错才对
-		logger.Info("No Service Handle for " + service_name)
-		return brokerapi.ProvisionedServiceSpec{}, errors.New("No Service Handle for " + service_name)
+	//没有找到具体的handler，这里如果没有找到具体的handler不是由于用户输入的，是不对的，报500错误
+	if err != nil {
+		logger.Error("Can not found handler for service "+service_name+" plan "+plan_name, err)
+		return brokerapi.ProvisionedServiceSpec{}, errors.New("Internal Error!!")
 	}
 
+	//执行handler中的命令
+	provsiondetail,myServiceInfo,err=myHandler.DoProvision(instanceID,details,asyncAllowed)
+
+	//如果出错
+	if err != nil {
+		logger.Error("Error do handler for service "+service_name+" plan "+plan_name, err)
+		return brokerapi.ProvisionedServiceSpec{}, errors.New("Internal Error!!")
+	}
+
+	//为隐藏属性添加上必要的变量
+	myServiceInfo.Service_name=service_name
+	myServiceInfo.Plan_name=plan_name
+	
 	//写入etcd 话说如果这个时候写入失败，那不就出现数据不一致的情况了么！todo
 	//先创建instanceid目录
 	_, err = etcdapi.Set(context.Background(), "/servicebroker/"+servcieBrokerName+"/instance/"+instanceID, "", &client.SetOptions{Dir: true}) //todo这些要么是常量，要么应该用环境变量
@@ -317,7 +197,7 @@ func (myBroker *myServiceBroker) Provision(
 	etcdset("/servicebroker/"+servcieBrokerName+"/instance/"+instanceID+"/plan_id", details.PlanID)
 	tmpval, _ := json.Marshal(details.Parameters)
 	etcdset("/servicebroker/"+servcieBrokerName+"/instance/"+instanceID+"/parameters", string(tmpval))
-	etcdset("/servicebroker/"+servcieBrokerName+"/instance/"+instanceID+"/dashboardurl", DashboardURL)
+	etcdset("/servicebroker/"+servcieBrokerName+"/instance/"+instanceID+"/dashboardurl", provsiondetail.DashboardURL)
 	//存储隐藏信息_info
 	tmpval, _ = json.Marshal(myServiceInfo)
 	etcdset("/servicebroker/"+servcieBrokerName+"/instance/"+instanceID+"/_info", string(tmpval))
@@ -334,9 +214,7 @@ func (myBroker *myServiceBroker) LastOperation(instanceID string) (brokerapi.Las
 	// If the broker provisions asynchronously, the Cloud Controller will poll this endpoint
 	// for the status of the provisioning operation.
 
-	//去读取进展状态，如果有错误，返回错误，如果没有错误，返回对象LastOperation! todo 如果同步模式，不用实现这个接口
-
-	var myServiceInfo serviceInfo
+	var myServiceInfo handler.ServiceInfo
 	var lastOperation brokerapi.LastOperation
 	//判断实例是否已经存在，如果不存在就报错
 	resp, err := etcdapi.Get(context.Background(), "/servicebroker/"+servcieBrokerName+"/instance/"+instanceID, &client.GetOptions{Recursive: true}) //改为环境变量
@@ -352,75 +230,32 @@ func (myBroker *myServiceBroker) LastOperation(instanceID string) (brokerapi.Las
 	resp, err = etcdget("/servicebroker/" + servcieBrokerName + "/instance/" + instanceID + "/_info")
 	json.Unmarshal([]byte(resp.Node.Value), &myServiceInfo)
 
-	//根据不同的服务和plan，选择创建的命令 ［每次增加不同的服务或者计划，只需要修改这里就好了。］
-	switch myServiceInfo.Service_name {
-	case managedServiceName:
-		switch myServiceInfo.Plan_name {
-		case "shared":
-			//因为是同步模式，协议里面并没有说怎么处理啊，统一反馈成功吧！
-			lastOperation = brokerapi.LastOperation{
-				State:       brokerapi.Succeeded,
-				Description: "It's a sync method!",
-			}
-		case "standalone":
-			//初始化aws client
-			svc := ec2.New(session.New(&aws.Config{Region: aws.String(awsRegion)}))
-			//从service_instance的etcd目录中取出aws instance的id，以便查询
-			awsInstaceID := myServiceInfo.Url
-			//查询实例
-			runResult, err := svc.DescribeInstances(&ec2.DescribeInstancesInput{
-				InstanceIds: []*string{
-					aws.String(awsInstaceID), // Required
-					// More values...
-				},
-			})
+	//生成具体的handler对象
+	myHandler,err:= handler.New(myServiceInfo.Service_name+"_"+myServiceInfo.Plan_name)
 
-			//出错后显示出错
-			if err != nil {
-				logger.Error("Could not get aws instance status "+awsInstaceID, err)
-				return brokerapi.LastOperation{}, errors.New("Could not get aws instance status " + awsInstaceID)
-			}
-
-			//注意：由于service_broker.go中并没有像规范里面一样定义410 gone这个状态，因此，暂时不对update和deporivion返回 to
-			if len(runResult.Reservations) == 0 {
-				logger.Error("aws instance status not exist"+awsInstaceID, err)
-				return brokerapi.LastOperation{}, errors.New("aws instance status not exist " + awsInstaceID)
-			}
-
-			switch *runResult.Reservations[0].Instances[0].State.Name {
-			case "pending":
-				lastOperation = brokerapi.LastOperation{
-					State:       brokerapi.InProgress,
-					Description: "creating service instance " + awsInstaceID,
-				}
-			case "running":
-				lastOperation = brokerapi.LastOperation{
-					State:       brokerapi.Succeeded,
-					Description: "successfully created service instance " + awsInstaceID,
-				}
-			default:
-				lastOperation = brokerapi.LastOperation{
-					State:       brokerapi.Failed,
-					Description: "failed to create service instance " + awsInstaceID,
-				}
-			}
-		default: //没有相关处理handle应该报错才对
-			logger.Info("No Plan Handle for " + myServiceInfo.Service_name)
-			return brokerapi.LastOperation{}, errors.New("No Plan Handle for " + myServiceInfo.Service_name)
-		}
-	default: //没有相关的处理handle应该报错才对
-		logger.Info("No Service Handle for " + myServiceInfo.Plan_name)
-		return brokerapi.LastOperation{}, errors.New("No Service Handle for " + myServiceInfo.Plan_name)
+	//没有找到具体的handler，这里如果没有找到具体的handler不是由于用户输入的，是不对的，报500错误
+	if err != nil {
+		logger.Error("Can not found handler for service "+myServiceInfo.Service_name+" plan "+myServiceInfo.Plan_name, err)
+		return brokerapi.LastOperation{}, errors.New("Internal Error!!")
 	}
 
-	//一切正常，返回结果
+	//执行handler中的命令
+	lastOperation,err=myHandler.DoLastOperation(&myServiceInfo)
+
+	//如果出错
+	if err != nil {
+		logger.Error("Error do handler for service "+myServiceInfo.Service_name+" plan "+myServiceInfo.Plan_name, err)
+		return brokerapi.LastOperation{}, errors.New("Internal Error!!")
+	}
+
+	//如果一切正常，返回结果
 	logger.Info("Successful query last operation for service instance" + instanceID)
 	return lastOperation, nil
 }
 
 func (myBroker *myServiceBroker) Deprovision(instanceID string, details brokerapi.DeprovisionDetails, asyncAllowed bool) (brokerapi.IsAsync, error) {
 
-	var myServiceInfo serviceInfo
+	var myServiceInfo handler.ServiceInfo
 
 	//判断实例是否已经存在，如果不存在就报错
 	resp, err := etcdapi.Get(context.Background(), "/servicebroker/"+servcieBrokerName+"/instance/"+instanceID, &client.GetOptions{Recursive: true})
@@ -460,99 +295,22 @@ func (myBroker *myServiceBroker) Deprovision(instanceID string, details brokerap
 	resp, err = etcdget("/servicebroker/" + servcieBrokerName + "/instance/" + instanceID + "/_info")
 	json.Unmarshal([]byte(resp.Node.Value), &myServiceInfo)
 
-	//根据不同的服务和plan，选择创建的命令 ［每次增加不同的服务或者计划，只需要修改这里就好了。］
-	switch myServiceInfo.Service_name {
-	case managedServiceName:
-		switch myServiceInfo.Plan_name {
-		case "shared":
-			//初始化mongodb的链接串
-			session, err := mgo.Dial(myServiceInfo.Url) //连接数据库
-			if err != nil {
-				logger.Error("Can't connet to mongodb "+myServiceInfo.Url, err)
-				return brokerapi.IsAsync(false), errors.New("Can't connet to mongodb " + myServiceInfo.Url)
-			}
-			defer session.Close()
-			session.SetMode(mgo.Monotonic, true)
-			mongodb := session.DB("admin") //数据库名称
-			err = mongodb.Login(myServiceInfo.Admin_user, myServiceInfo.Admin_password)
-			if err != nil {
-				logger.Error("Can't Login to mongodb "+myServiceInfo.Url, err)
-				return brokerapi.IsAsync(false), errors.New("Can't Login to mongodb " + myServiceInfo.Url)
-			}
+	//生成具体的handler对象
+	myHandler,err:= handler.New(myServiceInfo.Service_name+"_"+myServiceInfo.Plan_name)
 
-			//选择服务创建的数据库
-			userdb := session.DB(myServiceInfo.Database)
-			//这个服务很快，所以通过同步模式直接返回了
-			err = userdb.DropDatabase()
+	//没有找到具体的handler，这里如果没有找到具体的handler不是由于用户输入的，是不对的，报500错误
+	if err != nil {
+		logger.Error("Can not found handler for service "+myServiceInfo.Service_name+" plan "+myServiceInfo.Plan_name, err)
+		return brokerapi.IsAsync(false), errors.New("Internal Error!!")
+	}
 
-			if err != nil {
-				logger.Error("Can't DropDatabase in mongodb", err)
-				return brokerapi.IsAsync(false), errors.New("Can't DropDatabase in mongodb " + myServiceInfo.Url)
-			} else {
-				logger.Debug("Success DropDatabase in mongodb. database name=" + myServiceInfo.Database)
-			}
+	//执行handler中的命令
+	isasync,err:=myHandler.DoDeprovision(&myServiceInfo,asyncAllowed)
 
-		case "standalone":
-			//初始化aws client
-			svc := ec2.New(session.New(&aws.Config{Region: aws.String(awsRegion)}))
-			//从service_instance的etcd目录中取出aws instance的id，以便查询
-			awsInstaceID := myServiceInfo.Url
-			//查询实例
-			runResult, err := svc.DescribeInstances(&ec2.DescribeInstancesInput{
-				InstanceIds: []*string{
-					aws.String(awsInstaceID), // Required
-					// More values...
-				},
-			})
-
-			//出错后显示出错
-			if err != nil {
-				logger.Error("Could not get aws instance status "+awsInstaceID, err)
-				return brokerapi.IsAsync(false), errors.New("Could not get aws instance status " + awsInstaceID)
-			}
-
-			//没有找到任何aws的实例
-			if len(runResult.Reservations) == 0 {
-				logger.Error("aws instance status not exist"+awsInstaceID, err)
-				return brokerapi.IsAsync(false), errors.New("aws instance status not exist " + awsInstaceID)
-			}
-
-			switch *runResult.Reservations[0].Instances[0].State.Name {
-			case "pending":
-				//不可以执行的状态，反馈400，但是目前servie_broker的包里面没有这个状态的判断，只有暂时返回500 todo
-				logger.Error("Another operation for this service instance is in progress", err)
-				return brokerapi.IsAsync(false), errors.New("Another operation for this service instance is in progress")
-			case "running":
-				//可以删除的状态
-
-				//开始删除实例
-				_, err := svc.TerminateInstances(&ec2.TerminateInstancesInput{
-					InstanceIds: []*string{
-						aws.String(awsInstaceID), // Required
-						// More values...
-					},
-				})
-
-				if err != nil {
-					logger.Error("can not delete aws instance "+awsInstaceID, err)
-					return brokerapi.IsAsync(false), errors.New("can not delete aws instance " + awsInstaceID)
-				}
-				//成功删除
-				logger.Info("successfully detele aws instance " + awsInstaceID)
-
-			default:
-				//不可以执行的状态，反馈400，但是目前servie_broker的包里面没有这个状态的判断，只有暂时返回500 todo
-				logger.Error("Another operation for this service instance is in progress", err)
-				return brokerapi.IsAsync(false), errors.New("Another operation for this service instance is in progress")
-			}
-
-		default: //没有相关处理handle应该报错才对
-			logger.Info("No Plan Handle for " + myServiceInfo.Service_name)
-			return brokerapi.IsAsync(false), errors.New("No Plan Handle for " + myServiceInfo.Service_name)
-		}
-	default: //没有相关的处理handle应该报错才对
-		logger.Info("No Service Handle for " + myServiceInfo.Plan_name)
-		return brokerapi.IsAsync(false), errors.New("No Service Handle for " + myServiceInfo.Plan_name)
+	//如果出错
+	if err != nil {
+		logger.Error("Error do handler for service "+myServiceInfo.Service_name+" plan "+myServiceInfo.Plan_name, err)
+		return brokerapi.IsAsync(false),  errors.New("Internal Error!!")
 	}
 
 	//然后删除etcd里面的纪录，这里也有可能有不一致的情况
@@ -565,11 +323,11 @@ func (myBroker *myServiceBroker) Deprovision(instanceID string, details brokerap
 	}
 
 	logger.Info("Successful Deprovision instance " + instanceID)
-	return brokerapi.IsAsync(false), nil
+	return isasync, nil
 }
 
 func (myBroker *myServiceBroker) Bind(instanceID, bindingID string, details brokerapi.BindDetails) (brokerapi.Binding, error) {
-	var mycredentials myCredentials
+	var mycredentials handler.Credentials
 	var myBinding brokerapi.Binding
 	//判断实例是否已经存在，如果不存在就报错
 	resp, err := etcdget("/servicebroker/" + servcieBrokerName + "/instance/" + instanceID)
@@ -613,135 +371,26 @@ func (myBroker *myServiceBroker) Bind(instanceID, bindingID string, details brok
 	}
 
 	//隐藏属性不得不单独获取。取得当时绑定服务得到信息
-	var myServiceInfo serviceInfo
+	var myServiceInfo handler.ServiceInfo
 	resp, err = etcdget("/servicebroker/" + servcieBrokerName + "/instance/" + instanceID + "/_info")
 	json.Unmarshal([]byte(resp.Node.Value), &myServiceInfo)
 
-	//根据绑定要求，在数据库里面创建一个readwrite权限的用户
-	//根据不同的服务和plan，选择创建的命令 ［每次增加不同的服务或者计划，只需要修改这里就好了。］
-	switch myServiceInfo.Service_name {
-	case managedServiceName:
-		//由于bind的处理逻辑对于shared模式和standalone模式差不多
-		var mongodburl string
-		var mongodbname string
-		var mongodbrole mgo.Role
-		//判断采用何种模式
-		switch myServiceInfo.Plan_name {
-		case "shared":
-			//初始化mongodb的两个变量
-			mongodburl = myServiceInfo.Url
-			//share 模式只能是该数据库
-			mongodbname = myServiceInfo.Database
-			//share 模式，只是这个数据库的读写
-			mongodbrole = mgo.RoleReadWrite
-		case "standalone":
-			//初始化aws client
-			svc := ec2.New(session.New(&aws.Config{Region: aws.String(awsRegion)}))
-			//从service_instance的etcd目录中取出aws instance的id，以便查询
-			awsInstaceID := myServiceInfo.Url
-			//查询实例
-			runResult, err := svc.DescribeInstances(&ec2.DescribeInstancesInput{
-				InstanceIds: []*string{
-					aws.String(awsInstaceID), // Required
-					// More values...
-				},
-			})
+	//生成具体的handler对象
+	myHandler,err:= handler.New(myServiceInfo.Service_name+"_"+myServiceInfo.Plan_name)
 
-			//出错后显示出错
-			if err != nil {
-				logger.Error("Could not get aws instance status "+awsInstaceID, err)
-				return brokerapi.Binding{}, errors.New("Could not get aws instance status " + awsInstaceID)
-			}
+	//没有找到具体的handler，这里如果没有找到具体的handler不是由于用户输入的，是不对的，报500错误
+	if err != nil {
+		logger.Error("Can not found handler for service "+myServiceInfo.Service_name+" plan "+myServiceInfo.Plan_name, err)
+		return brokerapi.Binding{}, errors.New("Internal Error!!")
+	}
 
-			//没有找到任何aws的实例
-			if len(runResult.Reservations) == 0 {
-				logger.Error("aws instance status not exist"+awsInstaceID, err)
-				return brokerapi.Binding{}, errors.New("aws instance status not exist " + awsInstaceID)
-			}
+	//执行handler中的命令
+	myBinding,mycredentials,err=myHandler.DoBind(&myServiceInfo,bindingID,details)
 
-			switch *runResult.Reservations[0].Instances[0].State.Name {
-			case "pending":
-				//不可以执行的状态，反馈400，但是目前servie_broker的包里面没有这个状态的判断，只有暂时返回500 todo
-				logger.Error("Another operation for this service instance is in progress", err)
-				return brokerapi.Binding{}, errors.New("Another operation for this service instance is in progress")
-			case "running":
-				//可以绑定的状态
-				//暂时利用公网地址，以后都部署在一个云平台上和一个安全域内部的话，可以使用私网地址
-				mongodburl = *runResult.Reservations[0].Instances[0].PublicIpAddress + ":27017"
-				//对于standalone的情况，应该创建一个dbadmin on any database的角色，所以数据库应该是admin
-				mongodbname = "admin"
-				//角色
-				mongodbrole = mgo.RoleDBAdminAny
-
-			default:
-				//不可以执行的状态，反馈400，但是目前servie_broker的包里面没有这个状态的判断，只有暂时返回500 todo
-				logger.Error("Another operation for this service instance is in progress", err)
-				return brokerapi.Binding{}, errors.New("Another operation for this service instance is in progress")
-			}
-		default: //没有相关处理handle应该报错才对
-			logger.Info("No Plan Handle for " + myServiceInfo.Service_name)
-			return brokerapi.Binding{}, errors.New("No Plan Handle for " + myServiceInfo.Service_name)
-		} //end switch myServiceInfo.Plan_name
-
-		//完成变量赋值以后，开始准备创建用户
-		//初始化mongodb的链接串
-		session, err := mgo.Dial(mongodburl) //连接数据库
-		if err != nil {
-			logger.Error("Can't connet to mongodb "+mongodburl, err)
-			return brokerapi.Binding{}, errors.New("Can't connet to mongodb " + mongodburl)
-		}
-		defer session.Close()
-		session.SetMode(mgo.Monotonic, true)
-		mongodb := session.DB("admin") //数据库名称
-		err = mongodb.Login(myServiceInfo.Admin_user, myServiceInfo.Admin_password)
-		if err != nil {
-			logger.Error("Can't Login to mongodb "+mongodburl, err)
-			return brokerapi.Binding{}, errors.New("Can't Login to mongodb " + mongodburl)
-		}
-
-		//去创建一个用户，权限为RoleReadWrite
-		userdb := session.DB(mongodbname)
-		newusername := getguid()
-		newpassword := getguid()
-		//这个服务很快，所以通过同步模式直接返回了。再说了目前bind的协议只有同步的模式
-		err = userdb.UpsertUser(&mgo.User{
-			Username: newusername,
-			Password: newpassword,
-			Roles: []mgo.Role{
-				mongodbrole,
-			},
-		})
-
-		if err != nil {
-			logger.Error("Can't DropDatabase in mongodb", err)
-			return brokerapi.Binding{}, errors.New("Can't CreateUser in mongodb " + mongodburl + " as user:" + newusername)
-		} else {
-			logger.Debug("Success CreateUser in mongodb. database name="+mongodbname+" as user:"+newusername, nil)
-		}
-		//如果是admin，就不应该返回数据库的名字，并允许应用自己创建数据库
-		if mongodbname == "admin" {
-			mycredentials = myCredentials{
-				Uri:      "mongo://" + newusername + ":" + newpassword + "@" + mongodburl,
-				Hostname: strings.Split(mongodburl, ":")[0],
-				Port:     strings.Split(mongodburl, ":")[1],
-				Username: newusername,
-				Password: newpassword,
-			}
-		} else {
-			mycredentials = myCredentials{
-				Uri:      "mongo://" + newusername + ":" + newpassword + "@" + mongodburl + "/" + mongodbname,
-				Hostname: strings.Split(mongodburl, ":")[0],
-				Port:     strings.Split(mongodburl, ":")[1],
-				Username: newusername,
-				Password: newpassword,
-				Name:     mongodbname,
-			}
-		}
-		myBinding = brokerapi.Binding{Credentials: mycredentials}
-
-	default: //没有相关的处理handle应该报错才对
-		logger.Info("No Service Handle for " + myServiceInfo.Plan_name)
-		return brokerapi.Binding{}, errors.New("No Service Handle for " + myServiceInfo.Plan_name)
+	//如果出错
+	if err != nil {
+		logger.Error("Error do handler for service "+myServiceInfo.Service_name+" plan "+myServiceInfo.Plan_name, err)
+		return brokerapi.Binding{}, err
 	}
 
 	//把信息存储到etcd里面，同样这里有同步性的问题 todo怎么解决呢？
@@ -769,8 +418,8 @@ func (myBroker *myServiceBroker) Bind(instanceID, bindingID string, details brok
 
 func (myBroker *myServiceBroker) Unbind(instanceID, bindingID string, details brokerapi.UnbindDetails) error {
 
-	var mycredentials myCredentials
-	var myServiceInfo serviceInfo
+	var mycredentials handler.Credentials
+	var myServiceInfo handler.ServiceInfo
 	//判断实例是否已经存在，如果不存在就报错
 	resp, err := etcdapi.Get(context.Background(), "/servicebroker/"+servcieBrokerName+"/instance/"+instanceID, &client.GetOptions{Recursive: true}) //改为环境变量
 	if err != nil || !resp.Node.Dir {
@@ -820,95 +469,24 @@ func (myBroker *myServiceBroker) Unbind(instanceID, bindingID string, details br
 	resp, err = etcdget("/servicebroker/" + servcieBrokerName + "/instance/" + instanceID + "/binding/" + bindingID + "/_info")
 	json.Unmarshal([]byte(resp.Node.Value), &mycredentials)
 
-	//do somthing 去删除用户名和密码
-	switch myServiceInfo.Service_name {
-	case managedServiceName:
-		//由于bind的处理逻辑对于shared模式和standalone模式差不多
-		var mongodburl string
-		var mongodbname string
-		//判断采用何种模式
-		switch myServiceInfo.Plan_name {
-		case "shared":
-			//初始化mongodb的两个变量
-			mongodburl = myServiceInfo.Url
-			mongodbname = myServiceInfo.Database
-		case "standalone":
-			//初始化aws client
-			svc := ec2.New(session.New(&aws.Config{Region: aws.String(awsRegion)}))
-			//从service_instance的etcd目录中取出aws instance的id，以便查询
-			awsInstaceID := myServiceInfo.Url
-			//查询实例
-			runResult, err := svc.DescribeInstances(&ec2.DescribeInstancesInput{
-				InstanceIds: []*string{
-					aws.String(awsInstaceID), // Required
-					// More values...
-				},
-			})
+	//生成具体的handler对象
+	myHandler,err:= handler.New(myServiceInfo.Service_name+"_"+myServiceInfo.Plan_name)
 
-			//出错后显示出错
-			if err != nil {
-				logger.Error("Could not get aws instance status "+awsInstaceID, err)
-				return errors.New("Could not get aws instance status " + awsInstaceID)
-			}
-
-			//没有找到任何aws的实例
-			if len(runResult.Reservations) == 0 {
-				logger.Error("aws instance status not exist"+awsInstaceID, err)
-				return errors.New("aws instance status not exist " + awsInstaceID)
-			}
-
-			switch *runResult.Reservations[0].Instances[0].State.Name {
-			case "pending":
-				//不可以执行的状态，反馈400，但是目前servie_broker的包里面没有这个状态的判断，只有暂时返回500 todo
-				logger.Error("Another operation for this service instance is in progress", err)
-				return errors.New("Another operation for this service instance is in progress")
-			case "running":
-				//可以解除绑定的状态
-				//暂时利用公网地址，以后都部署在一个云平台上和一个安全域内部的话，可以使用私网地址
-				mongodburl = *runResult.Reservations[0].Instances[0].PublicIpAddress + ":27017"
-				//对于standalone的情况，应该创建一个dbadmin on any database的角色，所以数据库应该是admin
-				mongodbname = "admin"
-			default:
-				//不可以执行的状态，反馈400，但是目前servie_broker的包里面没有这个状态的判断，只有暂时返回500 todo
-				logger.Error("Another operation for this service instance is in progress", err)
-				return errors.New("Another operation for this service instance is in progress")
-			}
-		default: //没有相关处理handle应该报错才对
-			logger.Info("No Plan Handle for "+myServiceInfo.Service_name, nil)
-			return errors.New("No Plan Handle for " + myServiceInfo.Service_name)
-		}
-		//初始化mongodb的链接串
-		session, err := mgo.Dial(mongodburl) //连接数据库
-		if err != nil {
-			logger.Error("Can't connet to mongodb "+mongodburl, err)
-			return errors.New("Can't connet to mongodb " + mongodburl)
-		}
-		defer session.Close()
-		session.SetMode(mgo.Monotonic, true)
-		mongodb := session.DB("admin") //数据库名称
-		err = mongodb.Login(myServiceInfo.Admin_user, myServiceInfo.Admin_password)
-		if err != nil {
-			logger.Error("Can't Login to mongodb "+mongodburl, err)
-			return errors.New("Can't Login to mongodb " + mongodburl)
-		}
-
-		//选择服务创建的数据库
-		userdb := session.DB(mongodbname)
-		//这个服务很快，所以通过同步模式直接返回了
-		err = userdb.RemoveUser(mycredentials.Username)
-
-		if err != nil {
-			return errors.New("Can't DropUser in mongodb " + mongodburl)
-			logger.Error("Can't DropUser in mongodb", err)
-		} else {
-			logger.Debug("Success DropUser in mongodb. user name=" + mycredentials.Username)
-		}
-
-	default: //没有相关的处理handle应该报错才对
-		logger.Info("No Service Handle for " + myServiceInfo.Plan_name)
-		return errors.New("No Service Handle for " + myServiceInfo.Plan_name)
+	//没有找到具体的handler，这里如果没有找到具体的handler不是由于用户输入的，是不对的，报500错误
+	if err != nil {
+		logger.Error("Can not found handler for service "+myServiceInfo.Service_name+" plan "+myServiceInfo.Plan_name, err)
+		return errors.New("Internal Error!!")
 	}
 
+	//执行handler中的命令
+	err=myHandler.DoUnbind(&myServiceInfo,&mycredentials)
+
+	//如果出错
+	if err != nil {
+		logger.Error("Error do handler for service "+myServiceInfo.Service_name+" plan "+myServiceInfo.Plan_name, err)
+		return err
+	}
+	
 	//然后删除etcd里面的纪录，这里也有可能有不一致的情况
 	_, err = etcdapi.Delete(context.Background(), "/servicebroker/"+servcieBrokerName+"/instance/"+instanceID+"/binding/"+bindingID, &client.DeleteOptions{Recursive: true, Dir: true}) //todo这些要么是常量，要么应该用环境变量
 	if err != nil {
@@ -924,7 +502,7 @@ func (myBroker *myServiceBroker) Unbind(instanceID, bindingID string, details br
 
 func (myBroker *myServiceBroker) Update(instanceID string, details brokerapi.UpdateDetails, asyncAllowed bool) (brokerapi.IsAsync, error) {
 	// Update instance here
-	return brokerapi.IsAsync(true), nil
+	return brokerapi.IsAsync(false), brokerapi.ErrPlanChangeNotSupported
 }
 
 //定义工具函数
