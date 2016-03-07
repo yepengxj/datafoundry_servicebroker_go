@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	handler "github.com/asiainfoLDP/datafoundry_servicebroker_mongodb_aws/handler"
 	"github.com/coreos/etcd/client"
 	"github.com/pivotal-cf/brokerapi"
 	"github.com/pivotal-golang/lager"
@@ -18,7 +19,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	handler "github.com/asiainfoLDP/datafoundry_servicebroker_mongodb_aws/handler"
 )
 
 type myServiceBroker struct {
@@ -132,7 +132,6 @@ func (myBroker *myServiceBroker) Provision(
 	//初始化
 	var provsiondetail brokerapi.ProvisionedServiceSpec
 	var myServiceInfo handler.ServiceInfo
-	
 
 	//判断实例是否已经存在，如果存在就报错
 	resp, err := etcdget("/servicebroker/" + servcieBrokerName + "/instance") //改为环境变量
@@ -160,7 +159,7 @@ func (myBroker *myServiceBroker) Provision(
 	//是否要检查service和plan的status是否允许创建 todo
 
 	//生成具体的handler对象
-	myHandler,err:= handler.New(service_name+"_"+plan_name)
+	myHandler, err := handler.New(service_name + "_" + plan_name)
 
 	//没有找到具体的handler，这里如果没有找到具体的handler不是由于用户输入的，是不对的，报500错误
 	if err != nil {
@@ -169,7 +168,7 @@ func (myBroker *myServiceBroker) Provision(
 	}
 
 	//执行handler中的命令
-	provsiondetail,myServiceInfo,err=myHandler.DoProvision(instanceID,details,asyncAllowed)
+	provsiondetail, myServiceInfo, err = myHandler.DoProvision(instanceID, details, asyncAllowed)
 
 	//如果出错
 	if err != nil {
@@ -178,9 +177,9 @@ func (myBroker *myServiceBroker) Provision(
 	}
 
 	//为隐藏属性添加上必要的变量
-	myServiceInfo.Service_name=service_name
-	myServiceInfo.Plan_name=plan_name
-	
+	myServiceInfo.Service_name = service_name
+	myServiceInfo.Plan_name = plan_name
+
 	//写入etcd 话说如果这个时候写入失败，那不就出现数据不一致的情况了么！todo
 	//先创建instanceid目录
 	_, err = etcdapi.Set(context.Background(), "/servicebroker/"+servcieBrokerName+"/instance/"+instanceID, "", &client.SetOptions{Dir: true}) //todo这些要么是常量，要么应该用环境变量
@@ -231,7 +230,7 @@ func (myBroker *myServiceBroker) LastOperation(instanceID string) (brokerapi.Las
 	json.Unmarshal([]byte(resp.Node.Value), &myServiceInfo)
 
 	//生成具体的handler对象
-	myHandler,err:= handler.New(myServiceInfo.Service_name+"_"+myServiceInfo.Plan_name)
+	myHandler, err := handler.New(myServiceInfo.Service_name + "_" + myServiceInfo.Plan_name)
 
 	//没有找到具体的handler，这里如果没有找到具体的handler不是由于用户输入的，是不对的，报500错误
 	if err != nil {
@@ -240,7 +239,7 @@ func (myBroker *myServiceBroker) LastOperation(instanceID string) (brokerapi.Las
 	}
 
 	//执行handler中的命令
-	lastOperation,err=myHandler.DoLastOperation(&myServiceInfo)
+	lastOperation, err = myHandler.DoLastOperation(&myServiceInfo)
 
 	//如果出错
 	if err != nil {
@@ -296,7 +295,7 @@ func (myBroker *myServiceBroker) Deprovision(instanceID string, details brokerap
 	json.Unmarshal([]byte(resp.Node.Value), &myServiceInfo)
 
 	//生成具体的handler对象
-	myHandler,err:= handler.New(myServiceInfo.Service_name+"_"+myServiceInfo.Plan_name)
+	myHandler, err := handler.New(myServiceInfo.Service_name + "_" + myServiceInfo.Plan_name)
 
 	//没有找到具体的handler，这里如果没有找到具体的handler不是由于用户输入的，是不对的，报500错误
 	if err != nil {
@@ -305,12 +304,12 @@ func (myBroker *myServiceBroker) Deprovision(instanceID string, details brokerap
 	}
 
 	//执行handler中的命令
-	isasync,err:=myHandler.DoDeprovision(&myServiceInfo,asyncAllowed)
+	isasync, err := myHandler.DoDeprovision(&myServiceInfo, asyncAllowed)
 
 	//如果出错
 	if err != nil {
 		logger.Error("Error do handler for service "+myServiceInfo.Service_name+" plan "+myServiceInfo.Plan_name, err)
-		return brokerapi.IsAsync(false),  errors.New("Internal Error!!")
+		return brokerapi.IsAsync(false), errors.New("Internal Error!!")
 	}
 
 	//然后删除etcd里面的纪录，这里也有可能有不一致的情况
@@ -376,7 +375,7 @@ func (myBroker *myServiceBroker) Bind(instanceID, bindingID string, details brok
 	json.Unmarshal([]byte(resp.Node.Value), &myServiceInfo)
 
 	//生成具体的handler对象
-	myHandler,err:= handler.New(myServiceInfo.Service_name+"_"+myServiceInfo.Plan_name)
+	myHandler, err := handler.New(myServiceInfo.Service_name + "_" + myServiceInfo.Plan_name)
 
 	//没有找到具体的handler，这里如果没有找到具体的handler不是由于用户输入的，是不对的，报500错误
 	if err != nil {
@@ -385,7 +384,7 @@ func (myBroker *myServiceBroker) Bind(instanceID, bindingID string, details brok
 	}
 
 	//执行handler中的命令
-	myBinding,mycredentials,err=myHandler.DoBind(&myServiceInfo,bindingID,details)
+	myBinding, mycredentials, err = myHandler.DoBind(&myServiceInfo, bindingID, details)
 
 	//如果出错
 	if err != nil {
@@ -470,7 +469,7 @@ func (myBroker *myServiceBroker) Unbind(instanceID, bindingID string, details br
 	json.Unmarshal([]byte(resp.Node.Value), &mycredentials)
 
 	//生成具体的handler对象
-	myHandler,err:= handler.New(myServiceInfo.Service_name+"_"+myServiceInfo.Plan_name)
+	myHandler, err := handler.New(myServiceInfo.Service_name + "_" + myServiceInfo.Plan_name)
 
 	//没有找到具体的handler，这里如果没有找到具体的handler不是由于用户输入的，是不对的，报500错误
 	if err != nil {
@@ -479,14 +478,14 @@ func (myBroker *myServiceBroker) Unbind(instanceID, bindingID string, details br
 	}
 
 	//执行handler中的命令
-	err=myHandler.DoUnbind(&myServiceInfo,&mycredentials)
+	err = myHandler.DoUnbind(&myServiceInfo, &mycredentials)
 
 	//如果出错
 	if err != nil {
 		logger.Error("Error do handler for service "+myServiceInfo.Service_name+" plan "+myServiceInfo.Plan_name, err)
 		return err
 	}
-	
+
 	//然后删除etcd里面的纪录，这里也有可能有不一致的情况
 	_, err = etcdapi.Delete(context.Background(), "/servicebroker/"+servcieBrokerName+"/instance/"+instanceID+"/binding/"+bindingID, &client.DeleteOptions{Recursive: true, Dir: true}) //todo这些要么是常量，要么应该用环境变量
 	if err != nil {
@@ -572,28 +571,22 @@ func getenv(env string) string {
 var logger lager.Logger
 var etcdapi client.KeysAPI
 var servcieBrokerName string = "mongodb_aws"
-var etcdEndPoint string
+var etcdEndPoint, etcdUser, etcdPassword string
 var serviceBrokerPort string
 var mongoUrl string
 var mongoAdminUser string
 var mongoAdminPassword string
 var managedServiceName string = "mongodb_aws" //管理的服务名，注意用这种方法，一个service broker就只能管理一个服务。后面再考虑重构
-var awsRegion string = "cn-north-1"
-var imageId string = "ami-b18942dc"
-var instanceType string = "t2.micro"
-var keyName string = "service_borker"
-var securityGroups string = "service borker"
 
 func main() {
 	//初始化参数，参数应该从环境变量中获取
 	var username, password string
 	//todo参数应该改为从环境变量中获取
 	//需要以下环境变量
-	etcdEndPoint = getenv("ETCDENDPOINT")             //etcd的路径
-	serviceBrokerPort = getenv("BROKERPORT")          //监听的端口
-	mongoUrl = getenv("MONGOURL")                     //共享实例的mongodb地址
-	mongoAdminUser = getenv("MONGOADMINUSER")         //共享实例和独立实例的管理员用户名
-	mongoAdminPassword = getenv("MONGOADMINPASSWORD") //共享实例和独立实例的管理员密码
+	etcdEndPoint = getenv("ETCDENDPOINT") //etcd的路径
+	etcdUser = getenv("ETCDUSER")
+	etcdPassword = getenv("ETCDPASSWORD")
+	serviceBrokerPort = getenv("BROKERPORT") //监听的端口
 
 	//初始化日志对象，日志输出到stdout
 	logger = lager.NewLogger(servcieBrokerName)
@@ -605,6 +598,8 @@ func main() {
 		Transport: client.DefaultTransport,
 		// set timeout per request to fail fast when the target endpoint is unavailable
 		HeaderTimeoutPerRequest: time.Second,
+		Username:                etcdUser,
+		Password:                etcdPassword,
 	}
 	c, err := client.New(cfg)
 	if err != nil {
@@ -642,4 +637,5 @@ func main() {
 	brokerAPI := brokerapi.New(serviceBroker, logger, credentials)
 	http.Handle("/", brokerAPI)
 	http.ListenAndServe(":"+serviceBrokerPort, nil)
+
 }

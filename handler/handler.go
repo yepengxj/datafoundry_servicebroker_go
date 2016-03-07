@@ -1,15 +1,14 @@
 package handler
 
 import (
-	"fmt"
-	"github.com/pivotal-cf/brokerapi"
 	"crypto/md5"
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/hex"
+	"fmt"
+	"github.com/pivotal-cf/brokerapi"
 	"io"
 	"os"
-
 )
 
 type ServiceInfo struct {
@@ -32,13 +31,12 @@ type Credentials struct {
 	Name     string `json:"name,omitempty"`
 }
 
-
 type HandlerDriver interface {
-	DoProvision(instanceID string,details brokerapi.ProvisionDetails,asyncAllowed bool) (brokerapi.ProvisionedServiceSpec,ServiceInfo,error )
-	DoLastOperation(myServiceInfo *ServiceInfo) (brokerapi.LastOperation,error) 
-	DoDeprovision(myServiceInfo *ServiceInfo,asyncAllowed bool) (brokerapi.IsAsync,error)
-	DoBind(myServiceInfo *ServiceInfo,bindingID string,details brokerapi.BindDetails) (brokerapi.Binding,Credentials,error)
-	DoUnbind(myServiceInfo *ServiceInfo,mycredentials *Credentials) error
+	DoProvision(instanceID string, details brokerapi.ProvisionDetails, asyncAllowed bool) (brokerapi.ProvisionedServiceSpec, ServiceInfo, error)
+	DoLastOperation(myServiceInfo *ServiceInfo) (brokerapi.LastOperation, error)
+	DoDeprovision(myServiceInfo *ServiceInfo, asyncAllowed bool) (brokerapi.IsAsync, error)
+	DoBind(myServiceInfo *ServiceInfo, bindingID string, details brokerapi.BindDetails) (brokerapi.Binding, Credentials, error)
+	DoUnbind(myServiceInfo *ServiceInfo, mycredentials *Credentials) error
 }
 
 type Handler struct {
@@ -65,26 +63,25 @@ func New(name string) (*Handler, error) {
 	return &Handler{driver: handler}, nil
 }
 
-func (handler *Handler) DoProvision(instanceID string,details brokerapi.ProvisionDetails,asyncAllowed bool) (brokerapi.ProvisionedServiceSpec,ServiceInfo,error ) {
-	return handler.driver.DoProvision(instanceID,details,asyncAllowed)
+func (handler *Handler) DoProvision(instanceID string, details brokerapi.ProvisionDetails, asyncAllowed bool) (brokerapi.ProvisionedServiceSpec, ServiceInfo, error) {
+	return handler.driver.DoProvision(instanceID, details, asyncAllowed)
 }
 
-func (handler *Handler) DoLastOperation(myServiceInfo *ServiceInfo) (brokerapi.LastOperation,error)  {
+func (handler *Handler) DoLastOperation(myServiceInfo *ServiceInfo) (brokerapi.LastOperation, error) {
 	return handler.driver.DoLastOperation(myServiceInfo)
 }
 
-func (handler *Handler) DoDeprovision(myServiceInfo *ServiceInfo,asyncAllowed bool) (brokerapi.IsAsync,error)  {
-	return handler.driver.DoDeprovision(myServiceInfo,asyncAllowed)
+func (handler *Handler) DoDeprovision(myServiceInfo *ServiceInfo, asyncAllowed bool) (brokerapi.IsAsync, error) {
+	return handler.driver.DoDeprovision(myServiceInfo, asyncAllowed)
 }
 
-func (handler *Handler) DoBind(myServiceInfo *ServiceInfo,bindingID string,details brokerapi.BindDetails) (brokerapi.Binding,Credentials,error)  {
-	return handler.driver.DoBind(myServiceInfo,bindingID,details)
+func (handler *Handler) DoBind(myServiceInfo *ServiceInfo, bindingID string, details brokerapi.BindDetails) (brokerapi.Binding, Credentials, error) {
+	return handler.driver.DoBind(myServiceInfo, bindingID, details)
 }
 
-func (handler *Handler) DoUnbind(myServiceInfo *ServiceInfo,mycredentials *Credentials) error  {
-	return handler.driver.DoUnbind(myServiceInfo,mycredentials)
+func (handler *Handler) DoUnbind(myServiceInfo *ServiceInfo, mycredentials *Credentials) error {
+	return handler.driver.DoUnbind(myServiceInfo, mycredentials)
 }
-
 
 func getmd5string(s string) string {
 	h := md5.New()

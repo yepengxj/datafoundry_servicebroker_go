@@ -6,13 +6,11 @@ import (
 	"strings"
 )
 
-var mongoUrl string
-var mongoAdminUser string
-var mongoAdminPassword string
+var commonmongdbname string = "aqi_demo"
 
-type Mongodb_aws_sharedHandler struct{}
+type Mongodb_aws_shareandcommonHandler struct{}
 
-func (handler *Mongodb_aws_sharedHandler) DoProvision(instanceID string, details brokerapi.ProvisionDetails, asyncAllowed bool) (brokerapi.ProvisionedServiceSpec, ServiceInfo, error) {
+func (handler *Mongodb_aws_shareandcommonHandler) DoProvision(instanceID string, details brokerapi.ProvisionDetails, asyncAllowed bool) (brokerapi.ProvisionedServiceSpec, ServiceInfo, error) {
 	//初始化mongodb的链接串
 	session, err := mgo.Dial(mongoUrl) //连接数据库
 	if err != nil {
@@ -31,8 +29,8 @@ func (handler *Mongodb_aws_sharedHandler) DoProvision(instanceID string, details
 	newusername := getguid()
 	newpassword := getguid()
 	//为dashbord赋值 todo dashboard应该提供一个界面才对
-	DashboardURL := "http://" + strings.Split(mongoUrl, ":")[0] + "?user=" + newusername + "&pass=" + newpassword + "&instance=" + instanceID
 
+	DashboardURL := "http://" + strings.Split(mongoUrl, ":")[0] + "?user=" + newusername + "&pass=" + newpassword + "&instance=" + instanceID
 	//这个服务很快，所以通过同步模式直接返回了
 	err = newdb.UpsertUser(&mgo.User{
 		Username: newusername,
@@ -40,6 +38,19 @@ func (handler *Mongodb_aws_sharedHandler) DoProvision(instanceID string, details
 		Roles: []mgo.Role{
 			mgo.Role(mgo.RoleDBAdmin),
 		},
+	})
+
+	if err != nil {
+		return brokerapi.ProvisionedServiceSpec{}, ServiceInfo{}, err
+	}
+
+	//设置为共享库的读权限
+
+	commondb := session.DB(commonmongdbname)
+	err = commondb.UpsertUser(&mgo.User{
+		Username: newusername,
+		Password: newpassword,
+		Roles:    []mgo.Role{mgo.RoleRead},
 	})
 
 	if err != nil {
@@ -61,7 +72,7 @@ func (handler *Mongodb_aws_sharedHandler) DoProvision(instanceID string, details
 	return provsiondetail, myServiceInfo, nil
 }
 
-func (handler *Mongodb_aws_sharedHandler) DoLastOperation(myServiceInfo *ServiceInfo) (brokerapi.LastOperation, error) {
+func (handler *Mongodb_aws_shareandcommonHandler) DoLastOperation(myServiceInfo *ServiceInfo) (brokerapi.LastOperation, error) {
 	//因为是同步模式，协议里面并没有说怎么处理啊，统一反馈成功吧！
 	return brokerapi.LastOperation{
 		State:       brokerapi.Succeeded,
@@ -69,7 +80,7 @@ func (handler *Mongodb_aws_sharedHandler) DoLastOperation(myServiceInfo *Service
 	}, nil
 }
 
-func (handler *Mongodb_aws_sharedHandler) DoDeprovision(myServiceInfo *ServiceInfo, asyncAllowed bool) (brokerapi.IsAsync, error) {
+func (handler *Mongodb_aws_shareandcommonHandler) DoDeprovision(myServiceInfo *ServiceInfo, asyncAllowed bool) (brokerapi.IsAsync, error) {
 	//初始化mongodb的链接串
 	session, err := mgo.Dial(myServiceInfo.Url) //连接数据库
 	if err != nil {
@@ -96,7 +107,7 @@ func (handler *Mongodb_aws_sharedHandler) DoDeprovision(myServiceInfo *ServiceIn
 	return brokerapi.IsAsync(false), nil
 }
 
-func (handler *Mongodb_aws_sharedHandler) DoBind(myServiceInfo *ServiceInfo, bindingID string, details brokerapi.BindDetails) (brokerapi.Binding, Credentials, error) {
+func (handler *Mongodb_aws_shareandcommonHandler) DoBind(myServiceInfo *ServiceInfo, bindingID string, details brokerapi.BindDetails) (brokerapi.Binding, Credentials, error) {
 	//初始化mongodb的两个变量
 	mongodburl := myServiceInfo.Url
 	//share 模式只能是该数据库
@@ -122,12 +133,25 @@ func (handler *Mongodb_aws_sharedHandler) DoBind(myServiceInfo *ServiceInfo, bin
 	newusername := getguid()
 	newpassword := getguid()
 	//这个服务很快，所以通过同步模式直接返回了。再说了目前bind的协议只有同步的模式
+
 	err = userdb.UpsertUser(&mgo.User{
 		Username: newusername,
 		Password: newpassword,
 		Roles: []mgo.Role{
 			mongodbrole,
 		},
+	})
+
+	if err != nil {
+		return brokerapi.Binding{}, Credentials{}, err
+	}
+	//设置为共享库的读权限
+
+	commondb := session.DB(commonmongdbname)
+	err = commondb.UpsertUser(&mgo.User{
+		Username: newusername,
+		Password: newpassword,
+		Roles:    []mgo.Role{mgo.RoleRead},
 	})
 
 	if err != nil {
@@ -148,7 +172,7 @@ func (handler *Mongodb_aws_sharedHandler) DoBind(myServiceInfo *ServiceInfo, bin
 	return myBinding, mycredentials, nil
 }
 
-func (handler *Mongodb_aws_sharedHandler) DoUnbind(myServiceInfo *ServiceInfo, mycredentials *Credentials) error {
+func (handler *Mongodb_aws_shareandcommonHandler) DoUnbind(myServiceInfo *ServiceInfo, mycredentials *Credentials) error {
 	//初始化mongodb的两个变量
 	mongodburl := myServiceInfo.Url
 	mongodbname := myServiceInfo.Database
@@ -178,9 +202,5 @@ func (handler *Mongodb_aws_sharedHandler) DoUnbind(myServiceInfo *ServiceInfo, m
 }
 
 func init() {
-	register("mongodb_aws_shared", &Mongodb_aws_sharedHandler{})
-	mongoUrl = getenv("MONGOURL")                     //共享实例的mongodb地址
-	mongoAdminUser = getenv("MONGOADMINUSER")         //共享实例和独立实例的管理员用户名
-	mongoAdminPassword = getenv("MONGOADMINPASSWORD") //共享实例和独立实例的管理员密码
-
+	register("mongodb_aws_shareandcommon", &Mongodb_aws_shareandcommonHandler{})
 }

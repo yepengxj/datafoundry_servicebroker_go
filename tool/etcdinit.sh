@@ -57,6 +57,14 @@ docker exec etcd /etcdctl set /servicebroker/mongodb_aws/catalog/A25DE423-484E-4
 docker exec etcd /etcdctl set /servicebroker/mongodb_aws/catalog/A25DE423-484E-4252-B6FE-EA4F347BCE3D/plan/8C7E1AB9-DB63-4E14-9487-733BB587E1B2/description "each user has a standalone mongodb instance on aws"
 docker exec etcd /etcdctl set /servicebroker/mongodb_aws/catalog/A25DE423-484E-4252-B6FE-EA4F347BCE3D/plan/8C7E1AB9-DB63-4E14-9487-733BB587E1B2/metadata '{"bullets":["20 GB of Disk","20 connections"],"costs":[{"amount":{"usd":99.0,"eur":49.0},"unit":"MONTHLY"},{"amount":{"usd":0.99, "eur":0.49}, "unit":"1GB of messages over 20GB"} ], "displayName":"Big Bunny" }'
 docker exec etcd /etcdctl set /servicebroker/mongodb_aws/catalog/A25DE423-484E-4252-B6FE-EA4F347BCE3D/plan/8C7E1AB9-DB63-4E14-9487-733BB587E1B2/free false
+
+####创建套餐3 share and read common
+docker exec etcd /etcdctl -u root:asiainfoLDP mkdir /servicebroker/mongodb_aws/catalog/A25DE423-484E-4252-B6FE-EA4F347BCE3D/plan/257C6C2B-A376-4551-90E8-82D4E619C852
+docker exec etcd /etcdctl -u root:asiainfoLDP set /servicebroker/mongodb_aws/catalog/A25DE423-484E-4252-B6FE-EA4F347BCE3D/plan/257C6C2B-A376-4551-90E8-82D4E619C852/name "shareandcommon"
+docker exec etcd /etcdctl -u root:asiainfoLDP set /servicebroker/mongodb_aws/catalog/A25DE423-484E-4252-B6FE-EA4F347BCE3D/plan/257C6C2B-A376-4551-90E8-82D4E619C852/description "share a mongodb instance on aws,but can select from database aqi_demo"
+docker exec etcd /etcdctl -u root:asiainfoLDP set /servicebroker/mongodb_aws/catalog/A25DE423-484E-4252-B6FE-EA4F347BCE3D/plan/257C6C2B-A376-4551-90E8-82D4E619C852/metadata '{"bullets":["20 GB of Disk","20 connections"],"costs":[{"amount":{"usd":99.0,"eur":49.0},"unit":"MONTHLY"},{"amount":{"usd":0.99, "eur":0.49}, "unit":"1GB of messages over 20GB"} ], "displayName":"Big Bunny" }'
+docker exec etcd /etcdctl -u root:asiainfoLDP set /servicebroker/mongodb_aws/catalog/A25DE423-484E-4252-B6FE-EA4F347BCE3D/plan/257C6C2B-A376-4551-90E8-82D4E619C852/free false
+
 ##初始化instance
 docker exec etcd /etcdctl mkdir /servicebroker/mongodb_aws/instance
 
