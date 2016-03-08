@@ -7,7 +7,7 @@
 	"Deps": [
 		{
 			"ImportPath": "github.com/asiainfoLDP/datafoundry_servicebroker_go/handler",
-			"Rev": "6610b533e174948397c887ce7d7ef0e8f8a70c83"
+			"Rev": "5fde2810e339f54f31390e7b7018aebac1d1f475"
 		},
 		{
 			"ImportPath": "github.com/aws/aws-sdk-go/aws",

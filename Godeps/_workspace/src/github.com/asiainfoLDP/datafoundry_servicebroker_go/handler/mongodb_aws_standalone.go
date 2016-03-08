@@ -84,7 +84,7 @@ func (handler *Mongodb_aws_standaloneHandler) DoProvision(instanceID string, det
 
 	//为dashbord赋值 todo dashboard应该提供一个界面才对
 	//todo 没有公网地址
-	DashboardURL := "http://" + strings.Split(awsmongourl, ":")[0] + "?user=" + newusername + "&pass=" + newpassword
+	DashboardURL := "http://" + strings.Split(awsmongourl, ":")[0] + "/index.php?action=autologin.index&user=" + newusername + "&pass=" + newpassword
 
 	//表示是异步返回
 	provsiondetail := brokerapi.ProvisionedServiceSpec{DashboardURL: DashboardURL, IsAsync: true}
