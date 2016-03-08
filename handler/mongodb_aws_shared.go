@@ -31,7 +31,7 @@ func (handler *Mongodb_aws_sharedHandler) DoProvision(instanceID string, details
 	newusername := getguid()
 	newpassword := getguid()
 	//为dashbord赋值 todo dashboard应该提供一个界面才对
-	DashboardURL := "http://" + strings.Split(mongoUrl, ":")[0] + "?user=" + newusername + "&pass=" + newpassword + "&instance=" + instanceID
+	DashboardURL := "http://" + strings.Split(mongoUrl, ":")[0] + "/index.php?action=autologin.index&user=" + newusername + "&pass=" + newpassword + "&instance=" + instanceID
 
 	//这个服务很快，所以通过同步模式直接返回了
 	err = newdb.UpsertUser(&mgo.User{
