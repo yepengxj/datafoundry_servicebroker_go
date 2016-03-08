@@ -8,7 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	handler "github.com/asiainfoLDP/datafoundry_servicebroker_mongodb_aws/handler"
+	handler "github.com/asiainfoLDP/datafoundry_servicebroker_go/handler"
 	"github.com/coreos/etcd/client"
 	"github.com/pivotal-cf/brokerapi"
 	"github.com/pivotal-golang/lager"
@@ -576,7 +576,6 @@ var serviceBrokerPort string
 var mongoUrl string
 var mongoAdminUser string
 var mongoAdminPassword string
-var managedServiceName string = "mongodb_aws" //管理的服务名，注意用这种方法，一个service broker就只能管理一个服务。后面再考虑重构
 
 func main() {
 	//初始化参数，参数应该从环境变量中获取
