@@ -14,3 +14,16 @@ oc run servicebroker-mongo --image=172.30.32.106:5000/datafoundry-servicebroker/
     --env  AWS_SECRET_ACCESS_KEY=u5E1WM6v5YfageHi6KhF4y6rAfO03Fh65phguAvX
 
 oc expose  svc servicebroker-mongo
+
+
+
+oc new-app --name servicebroker-mongo https://github.com/asiainfoLDP/datafoundry_servicebroker_go.git \
+    -e  ETCDENDPOINT="http://54.222.175.239:2379"  \
+    -e  ETCDUSER="asiainfoLDP" \
+	-e  ETCDPASSWORD="6ED9BA74-75FD-4D1B-8916-842CB936AC1A" \
+    -e  BROKERPORT="8000"  \
+    -e  MONGOURL="54.222.175.239:27017"  \
+    -e  MONGOADMINUSER="asiainfoLDP"   \
+    -e  MONGOADMINPASSWORD="6ED9BA74-75FD-4D1B-8916-842CB936AC1A"   \
+    -e  AWS_ACCESS_KEY_ID=AKIAO2SO52RKIE7BCSHA  \
+    -e  AWS_SECRET_ACCESS_KEY=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

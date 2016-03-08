@@ -9,3 +9,10 @@ docker run -d -p 8000:8000 \
 	-e "AWS_ACCESS_KEY_ID=XXX"
 	-e "AWS_SECRET_ACCESS_KEY=XXX"
 	--name mongodb_aws mongodb_aws
+
+
+docker run  postgre POSTGRES_PASSWORD=C1BFACD6-E500-4257-B1BA-E7D369999C0F
+
+docker run mysql MYSQL_ROOT_PASSWORD=cec82702-0ab3-449e-a80f-f815ce28e0cf
+
+docker run --name mysqladmin -d --link mysql:db -p 8080:80 phpmyadmin/phpmyadmin

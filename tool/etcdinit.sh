@@ -65,14 +65,28 @@ docker exec etcd /etcdctl -u root:asiainfoLDP set /servicebroker/mongodb_aws/cat
 docker exec etcd /etcdctl -u root:asiainfoLDP set /servicebroker/mongodb_aws/catalog/A25DE423-484E-4252-B6FE-EA4F347BCE3D/plan/257C6C2B-A376-4551-90E8-82D4E619C852/metadata '{"bullets":["20 GB of Disk","20 connections"],"costs":[{"amount":{"usd":99.0,"eur":49.0},"unit":"MONTHLY"},{"amount":{"usd":0.99, "eur":0.49}, "unit":"1GB of messages over 20GB"} ], "displayName":"Big Bunny" }'
 docker exec etcd /etcdctl -u root:asiainfoLDP set /servicebroker/mongodb_aws/catalog/A25DE423-484E-4252-B6FE-EA4F347BCE3D/plan/257C6C2B-A376-4551-90E8-82D4E619C852/free false
 
+----创建服务2 mysql
+###创建服务
+docker exec etcd /etcdctl -u root:asiainfoLDP mkdir /servicebroker/mongodb_aws/catalog/7D2AB7B3-8AEF-45EE-BFF2-64A767DDE9DA #服务id
+
+###创建服务级的配置
+docker exec etcd /etcdctl -u root:asiainfoLDP set /servicebroker/mongodb_aws/catalog/7D2AB7B3-8AEF-45EE-BFF2-64A767DDE9DA/name "mysql"
+docker exec etcd /etcdctl -u root:asiainfoLDP set /servicebroker/mongodb_aws/catalog/7D2AB7B3-8AEF-45EE-BFF2-64A767DDE9DA/description "A MYSQL Service"
+docker exec etcd /etcdctl -u root:asiainfoLDP set /servicebroker/mongodb_aws/catalog/7D2AB7B3-8AEF-45EE-BFF2-64A767DDE9DA/bindable true
+docker exec etcd /etcdctl -u root:asiainfoLDP set /servicebroker/mongodb_aws/catalog/7D2AB7B3-8AEF-45EE-BFF2-64A767DDE9DA/planupdatable false
+docker exec etcd /etcdctl -u root:asiainfoLDP set /servicebroker/mongodb_aws/catalog/7D2AB7B3-8AEF-45EE-BFF2-64A767DDE9DA/tags 'mysql,database'
+docker exec etcd /etcdctl -u root:asiainfoLDP set /servicebroker/mongodb_aws/catalog/7D2AB7B3-8AEF-45EE-BFF2-64A767DDE9DA/metadata '{"displayName":"Mysql","imageUrl":"https://d33na3ni6eqf5j.cloudfront.net/app_resources/18492/thumbs_112/img9069612145282015279.png","longDescription":"Managed, highly available, RabbitMQ clusters in the cloud","providerDisplayName":"84codes AB","documentationUrl":"http://docs.cloudfoundry.com/docs/dotcom/marketplace/services/cloudamqp.html","supportUrl":"http://www.cloudamqp.com/support.html"}'
+
+###创建套餐目录
+docker exec etcd /etcdctl -u root:asiainfoLDP mkdir /servicebroker/mongodb_aws/catalog/7D2AB7B3-8AEF-45EE-BFF2-64A767DDE9DA/plan
+###创建套餐1
+docker exec etcd /etcdctl -u root:asiainfoLDP mkdir /servicebroker/mongodb_aws/catalog/7D2AB7B3-8AEF-45EE-BFF2-64A767DDE9DA/plan/56660431-6032-43D0-A114-FFA3BF521B66
+docker exec etcd /etcdctl -u root:asiainfoLDP set /servicebroker/mongodb_aws/catalog/7D2AB7B3-8AEF-45EE-BFF2-64A767DDE9DA/plan/56660431-6032-43D0-A114-FFA3BF521B66/name "shared"
+docker exec etcd /etcdctl -u root:asiainfoLDP set /servicebroker/mongodb_aws/catalog/7D2AB7B3-8AEF-45EE-BFF2-64A767DDE9DA/plan/56660431-6032-43D0-A114-FFA3BF521B66/description "share a mysql instance on aws"
+docker exec etcd /etcdctl -u root:asiainfoLDP set /servicebroker/mongodb_aws/catalog/7D2AB7B3-8AEF-45EE-BFF2-64A767DDE9DA/plan/56660431-6032-43D0-A114-FFA3BF521B66/metadata '{"bullets":["20 GB of Disk","20 connections"],"displayName":"Shared and Free" }'
+docker exec etcd /etcdctl -u root:asiainfoLDP set /servicebroker/mongodb_aws/catalog/7D2AB7B3-8AEF-45EE-BFF2-64A767DDE9DA/plan/56660431-6032-43D0-A114-FFA3BF521B66/free true
+
+
 ##初始化instance
 docker exec etcd /etcdctl mkdir /servicebroker/mongodb_aws/instance
-
-###创建一个用于测试的服务实例
-docker exec etcd /etcdctl mkdir /servicebroker/mongodb_aws/instance/98A763D7-CE08-4E0D-B139-769F80B6DEFD
-
-###创建一个用于测试的绑定实例
-docker exec etcd /etcdctl mkdir /servicebroker/mongodb_aws/instance/98A763D7-CE08-4E0D-B139-769F80B6DEFD/binding
-docker exec etcd /etcdctl mkdir /servicebroker/mongodb_aws/instance/98A763D7-CE08-4E0D-B139-769F80B6DEFD/binding/6853A95B-428B-4C10-99FC-1BE6CBFBE176
-
 

@@ -1,14 +1,10 @@
 {
-	"ImportPath": "github.com/asiainfoLDP/datafoundry_servicebroker_mongodb_aws",
+	"ImportPath": "github.com/asiainfoLDP/datafoundry_servicebroker_go",
 	"GoVersion": "go1.5",
 	"Packages": [
 		"./..."
 	],
 	"Deps": [
-		{
-			"ImportPath": "github.com/asiainfoLDP/datafoundry_servicebroker_go/handler",
-			"Rev": "5fde2810e339f54f31390e7b7018aebac1d1f475"
-		},
 		{
 			"ImportPath": "github.com/aws/aws-sdk-go/aws",
 			"Comment": "v1.1.5",
@@ -133,6 +129,11 @@
 			"ImportPath": "github.com/go-ini/ini",
 			"Comment": "v1.10.1",
 			"Rev": "776aa739ce9373377cd16f526cdf06cb4c89b40f"
+		},
+		{
+			"ImportPath": "github.com/go-sql-driver/mysql",
+			"Comment": "v1.2-186-g0f2db9e",
+			"Rev": "0f2db9e6c9cff80a97ca5c2c5096242cc1554e16"
 		},
 		{
 			"ImportPath": "github.com/gorilla/context",
