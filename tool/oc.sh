@@ -11,7 +11,11 @@ oc run servicebroker-mongo --image=172.30.32.106:5000/datafoundry-servicebroker/
     --env  MONGOADMINUSER="asiainfoLDP"   \
     --env  MONGOADMINPASSWORD="6ED9BA74-75FD-4D1B-8916-842CB936AC1A"   \
     --env  AWS_ACCESS_KEY_ID=AKIAO2SO52RKIE7BCSHA  \
-    --env  AWS_SECRET_ACCESS_KEY=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
+    --env  AWS_SECRET_ACCESS_KEY=u5E1WM6v5YfageHi6KhF4y6rAfO03Fh65phguAvX \
+    --env  POSTGRESURL="54.222.175.239:5432" \
+    --env  POSTGRESUSER="asiainfoLDP" \
+    --env  POSTGRESADMINPASSWORD="C1BFACD6-E500-4257-B1BA-E7D369999C0F"
+
 
 oc expose  svc servicebroker-mongo
 
