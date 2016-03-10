@@ -61,7 +61,7 @@ func (myBroker *myServiceBroker) Services() []brokerapi.Service {
 	}
 
 	for i := 0; i < len(resp.Node.Nodes); i++ {
-		//为旗下发现的每一个service进行迭代，不过一般情况下，应该只有一个service
+		//为旗下发现的每一个service进行迭代
 		logger.Debug("Start to Parse Service " + resp.Node.Nodes[i].Key)
 		//在下一级循环外设置id，因为他是目录名字，注意，如果按照这个逻辑，id一定要是uuid，中间一定不能有目录符号"/"
 		myService.ID = strings.Split(resp.Node.Nodes[i].Key, "/")[len(strings.Split(resp.Node.Nodes[i].Key, "/"))-1]
@@ -103,12 +103,14 @@ func (myBroker *myServiceBroker) Services() []brokerapi.Service {
 					}
 					//装配plan需要返回的值，按照有多少个plan往里面装
 					myPlans = append(myPlans, myPlan)
-					//重置服务变量
+					//重置套餐变量
 					myPlan = brokerapi.ServicePlan{}
 
 				}
 				//将装配好的Plan对象赋值给Service
 				myService.Plans = myPlans
+				//清空myPlans
+
 			}
 		}
 

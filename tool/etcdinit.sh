@@ -86,6 +86,27 @@ docker exec etcd /etcdctl -u root:asiainfoLDP set /servicebroker/mongodb_aws/cat
 docker exec etcd /etcdctl -u root:asiainfoLDP set /servicebroker/mongodb_aws/catalog/7D2AB7B3-8AEF-45EE-BFF2-64A767DDE9DA/plan/56660431-6032-43D0-A114-FFA3BF521B66/metadata '{"bullets":["20 GB of Disk","20 connections"],"displayName":"Shared and Free" }'
 docker exec etcd /etcdctl -u root:asiainfoLDP set /servicebroker/mongodb_aws/catalog/7D2AB7B3-8AEF-45EE-BFF2-64A767DDE9DA/plan/56660431-6032-43D0-A114-FFA3BF521B66/free true
 
+----创建服务3 postgresql
+###创建服务
+docker exec etcd /etcdctl -u root:asiainfoLDP mkdir /servicebroker/mongodb_aws/catalog/cb2d4021-5fbc-45c2-92a9-9584583b7ce5 #服务id
+
+###创建服务级的配置
+docker exec etcd /etcdctl -u root:asiainfoLDP set /servicebroker/mongodb_aws/catalog/cb2d4021-5fbc-45c2-92a9-9584583b7ce5/name "postgresql"
+docker exec etcd /etcdctl -u root:asiainfoLDP set /servicebroker/mongodb_aws/catalog/cb2d4021-5fbc-45c2-92a9-9584583b7ce5/description "A Postgresql Service"
+docker exec etcd /etcdctl -u root:asiainfoLDP set /servicebroker/mongodb_aws/catalog/cb2d4021-5fbc-45c2-92a9-9584583b7ce5/bindable true
+docker exec etcd /etcdctl -u root:asiainfoLDP set /servicebroker/mongodb_aws/catalog/cb2d4021-5fbc-45c2-92a9-9584583b7ce5/planupdatable false
+docker exec etcd /etcdctl -u root:asiainfoLDP set /servicebroker/mongodb_aws/catalog/cb2d4021-5fbc-45c2-92a9-9584583b7ce5/tags 'postgresql,database,experiment'
+docker exec etcd /etcdctl -u root:asiainfoLDP set /servicebroker/mongodb_aws/catalog/cb2d4021-5fbc-45c2-92a9-9584583b7ce5/metadata '{"displayName":"Postgresql","imageUrl":"https://d33na3ni6eqf5j.cloudfront.net/app_resources/18492/thumbs_112/img9069612145282015279.png","longDescription":"Managed, highly available, RabbitMQ clusters in the cloud","providerDisplayName":"84codes AB","documentationUrl":"http://docs.cloudfoundry.com/docs/dotcom/marketplace/services/cloudamqp.html","supportUrl":"http://www.cloudamqp.com/support.html"}'
+
+###创建套餐目录
+docker exec etcd /etcdctl -u root:asiainfoLDP mkdir /servicebroker/mongodb_aws/catalog/cb2d4021-5fbc-45c2-92a9-9584583b7ce5/plan
+###创建套餐1
+docker exec etcd /etcdctl -u root:asiainfoLDP mkdir /servicebroker/mongodb_aws/catalog/cb2d4021-5fbc-45c2-92a9-9584583b7ce5/plan/bd9a94f2-5718-4dde-a773-61ff4ad9e843
+docker exec etcd /etcdctl -u root:asiainfoLDP set /servicebroker/mongodb_aws/catalog/cb2d4021-5fbc-45c2-92a9-9584583b7ce5/plan/bd9a94f2-5718-4dde-a773-61ff4ad9e843/name "shared"
+docker exec etcd /etcdctl -u root:asiainfoLDP set /servicebroker/mongodb_aws/catalog/cb2d4021-5fbc-45c2-92a9-9584583b7ce5/plan/bd9a94f2-5718-4dde-a773-61ff4ad9e843/description "share a postgresql instance on aws"
+docker exec etcd /etcdctl -u root:asiainfoLDP set /servicebroker/mongodb_aws/catalog/cb2d4021-5fbc-45c2-92a9-9584583b7ce5/plan/bd9a94f2-5718-4dde-a773-61ff4ad9e843/metadata '{"bullets":["20 GB of Disk","20 connections"],"displayName":"Shared and Free" }'
+docker exec etcd /etcdctl -u root:asiainfoLDP set /servicebroker/mongodb_aws/catalog/cb2d4021-5fbc-45c2-92a9-9584583b7ce5/plan/bd9a94f2-5718-4dde-a773-61ff4ad9e843/free true
+
 
 ##初始化instance
 docker exec etcd /etcdctl mkdir /servicebroker/mongodb_aws/instance

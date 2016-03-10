@@ -124,4 +124,29 @@ curl -i -X DELETE 'http://asiainfoLDP:2016asia@localhost:8000/v2/service_instanc
 curl -i -X DELETE 'http://asiainfoLDP:2016asia@localhost:8000/v2/service_instances/809EB82E-BAEC-4E24-A672-A63704B0C7A8?service_id=7D2AB7B3-8AEF-45EE-BFF2-64A767DDE9DA&plan_id=56660431-6032-43D0-A114-FFA3BF521B66' 
 
 
+------postgresql  shared测试-----
+
+#创建一个shareandcommon
+curl -i -X PUT http://asiainfoLDP:2016asia@localhost:8000/v2/service_instances/226DA4D0-2213-4581-8045-93C4954D2B7D -d '{
+  "service_id":"cb2d4021-5fbc-45c2-92a9-9584583b7ce5",
+  "plan_id":"bd9a94f2-5718-4dde-a773-61ff4ad9e843",
+  "organization_guid": "org-guid",
+  "space_guid":"space-guid",
+  "parameters": {"ami_id":"ami-ecb68a84"}
+}' -H "Content-Type: application/json"
+
+##正确的案例，同步模式
+curl -i -X PUT http://asiainfoLDP:2016asia@localhost:8000/v2/service_instances/226DA4D0-2213-4581-8045-93C4954D2B7D/service_bindings/592159AF-B5C6-49CA-9F08-0407610C416B -d '{
+  "plan_id":        "bd9a94f2-5718-4dde-a773-61ff4ad9e843",
+  "service_id":     "cb2d4021-5fbc-45c2-92a9-9584583b7ce5",
+  "app_guid":       "app-guid"
+}' -H "Content-Type: application/json"
+
+#正确地删除绑定
+curl -i -X DELETE 'http://asiainfoLDP:2016asia@localhost:8000/v2/service_instances/226DA4D0-2213-4581-8045-93C4954D2B7D/service_bindings/592159AF-B5C6-49CA-9F08-0407610C416B?service_id=cb2d4021-5fbc-45c2-92a9-9584583b7ce5&plan_id=bd9a94f2-5718-4dde-a773-61ff4ad9e843' 
+
+
+#正确的删除实例
+curl -i -X DELETE 'http://asiainfoLDP:2016asia@localhost:8000/v2/service_instances/226DA4D0-2213-4581-8045-93C4954D2B7D?service_id=cb2d4021-5fbc-45c2-92a9-9584583b7ce5&plan_id=bd9a94f2-5718-4dde-a773-61ff4ad9e843' 
+
 
