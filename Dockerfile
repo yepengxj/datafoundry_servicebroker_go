@@ -1,4 +1,4 @@
-FROM golang:1.5.3
+FROM docker-registry-default.app.asiainfodata.com/datafoundry-servicebroker/golang:1.5.3
 
 ENV BROKERPORT 8000
 EXPOSE 8000
