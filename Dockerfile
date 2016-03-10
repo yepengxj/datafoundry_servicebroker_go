@@ -1,4 +1,4 @@
-FROM 172.30.32.106:5000/datafoundry-servicebroker/golang
+FROM golang:1.5.3
 
 ENV BROKERPORT 8000
 EXPOSE 8000
