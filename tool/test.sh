@@ -2,7 +2,7 @@ curl -X GET http://asiainfoLDP:2016asia@localhost:8000/v2/catalog
 
 
 #########################生成实例######################
-##错误
+##错误的测试
 curl -i -X PUT http://asiainfoLDP:2016asia@localhost:8000/v2/service_instances/98A763D7-CE08-4E0D-B139-769F80B6DEFD -d '{
   "service_id":"service-guid-111",
   "plan_id":"plan-guid",
